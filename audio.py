@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from args import AudioRQTransformerArgs as ModelArgs
+from utils import RMSNorm
 
 
 class AudioQuantizer(nn.Module):
@@ -18,6 +19,8 @@ class AudioQuantizer(nn.Module):
         self.codebook_size = args.encoder_codebook_size
         self.hidden_dim = args.encoder_hidden_dim
 
+        self.input_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+
         # Temporal codebooks - for sequence-level patterns
         self.temporal_codebooks = nn.ModuleList(
             [
@@ -25,6 +28,7 @@ class AudioQuantizer(nn.Module):
                 for _ in range(self.num_quantizers)
             ]
         )
+        self.temporal_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
 
         # Depth codebooks - for feature-level patterns
         self.depth_codebooks = nn.ModuleList(
@@ -33,6 +37,7 @@ class AudioQuantizer(nn.Module):
                 for _ in range(self.num_quantizers)
             ]
         )
+        self.depth_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
 
         # Spectral codebooks - for frequency-domain patterns
         self.spectral_codebooks = nn.ModuleList(
@@ -41,6 +46,7 @@ class AudioQuantizer(nn.Module):
                 for _ in range(self.num_quantizers // 2)
             ]
         )
+        self.spectral_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
 
         # Projections for different feature types
         # self.spectral_proj = nn.Linear(args.hidden_size, args.hidden_size)
@@ -106,22 +112,27 @@ class AudioQuantizer(nn.Module):
         quantized = torch.cat(quantized, dim=-1)
         
         return quantized, indices
-
-
-
-
-
-
-
-
-
-
-
-
-class DualAudioStreamRQTransformer(nn.Module):
-    def __init__(self, args: ModelArgs):
-        super().__init__()
-        self.args = args
     
-    def forward(self, input: torch.Tensor):
-        return None
+    def forward(self, x: torch.Tensor, stream_type: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Quantize input based on stream type
+        stream_type: One of 'temporal', 'depth', or 'spectral'
+        """
+        x = self.input_norm(x)
+
+        if stream_type == 'temporal':
+            quantized, indices = self.quantize_temporial(x)
+            return self.temporal_output_norm(quantized), indices
+        
+        elif stream_type == 'depth':
+            quantized, indices = self.quantize_depth(x)
+            return self.depth_output_norm(quantized), indices
+        
+        elif stream_type == 'spectral':
+            quantized, indices = self.quantize_spectral(x)
+            return self.spectral_output_norm(quantized), indices
+        
+        else:
+            raise ValueError(f"Unknown stream type: {stream_type}")
+
+
