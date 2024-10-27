@@ -1,3 +1,13 @@
-from args import AudioRQTransformerArgs
+import torch
 
-print(AudioRQTransformerArgs.encoder_head_dim)
+from args import AudioRQTransformerArgs
+from audio import AudioQuantizer
+
+model = AudioQuantizer(AudioRQTransformerArgs)
+
+print(model)
+
+inp = torch.randn(1, 1, 512)
+quantized, indices = model.quantize_depth(inp)
+
+print(quantized.shape)
