@@ -1,0 +1,3 @@
+from args import AudioRQTransformerArgs
+
+print(AudioRQTransformerArgs.encoder_head_dim)
