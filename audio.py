@@ -1,6 +1,6 @@
-from typing import List, Any, Optional, Tuple
+from typing import Tuple
 
-from einops import rearrange, repeat
+from einops import rearrange
 
 import torch
 import torch.nn as nn
@@ -39,19 +39,6 @@ class AudioQuantizer(nn.Module):
         )
         self.depth_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
 
-        # Spectral codebooks - for frequency-domain patterns
-        self.spectral_codebooks = nn.ModuleList(
-            [
-                nn.Embedding(self.codebook_size, (self.hidden_dim // (self.num_quantizers // 2))) # Fewer spectral codebooks
-                for _ in range(self.num_quantizers // 2)
-            ]
-        )
-        self.spectral_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
-
-        # Projections for different feature types
-        # self.spectral_proj = nn.Linear(args.hidden_size, args.hidden_size)
-        # self.depth_proj = nn.Linear(args.hidden_size, args.hidden_size)
-
     def quantize_temporial(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         B, T, D = x.shape
 
@@ -72,8 +59,6 @@ class AudioQuantizer(nn.Module):
         return quantized, indices
     
     def quantize_depth(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # x = self.depth_proj(x)
-
         B, T, D = x.shape
 
         x = rearrange(x, 'b t (q d) -> b t q d', q=self.num_quantizers)
@@ -82,27 +67,6 @@ class AudioQuantizer(nn.Module):
         quantized = []
         
         for i, codebook in enumerate(self.depth_codebooks):
-            distances = torch.cdist(x[..., i, :], codebook.weight)
-            idx = distances.argmin(dim=-1)
-            indices.append(idx)
-            quantized.append(codebook(idx))
-        
-        indices = torch.stack(indices, dim=-1)
-        quantized = torch.cat(quantized, dim=-1)
-        
-        return quantized, indices
-    
-    def quantize_spectral(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # x = self.spectral_proj(x)
-
-        B, T, D = x.shape
-
-        x = rearrange(x, 'b t (q d) -> b t q d', q=self.num_quantizers // 2)
-        
-        indices = []
-        quantized = []
-        
-        for i, codebook in enumerate(self.spectral_codebooks):
             distances = torch.cdist(x[..., i, :], codebook.weight)
             idx = distances.argmin(dim=-1)
             indices.append(idx)
@@ -127,11 +91,7 @@ class AudioQuantizer(nn.Module):
         elif stream_type == 'depth':
             quantized, indices = self.quantize_depth(x)
             return self.depth_output_norm(quantized), indices
-        
-        elif stream_type == 'spectral':
-            quantized, indices = self.quantize_spectral(x)
-            return self.spectral_output_norm(quantized), indices
-        
+
         else:
             raise ValueError(f"Unknown stream type: {stream_type}")
 

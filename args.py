@@ -18,7 +18,7 @@ class BaseModelArgs:
 
 @dataclass
 class AudioRQTransformerArgs(BaseModelArgs):
-    encoder_hidden_dim: int = 512
+    encoder_hidden_dim: int = 256
     encoder_hidden_depth_layers: int = 6
     encoder_hidden_temporial_layers: int = 6
     encoder_hidden_spectral_layers: int = 6
