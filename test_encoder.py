@@ -2,10 +2,10 @@ import pyaudio
 import torch
 import numpy as np
 from args import AudioRQTransformerArgs
-from audio import AudioQuantizer
+from audio import AudioEncoderDecoder
 
 # Initialize AudioQuantizer with given arguments
-model = AudioQuantizer(AudioRQTransformerArgs)
+model = AudioEncoderDecoder(AudioRQTransformerArgs)
 print(model)
 
 # Audio stream configuration
@@ -38,12 +38,9 @@ try:
         audio_tensor = audio_tensor.view(1, 1, model.hidden_dim)  # Final shape [1, T, hidden_dim]
 
         # Temporal quantization
-        quantized_temporal, indices_temporal = model(audio_tensor, stream_type='temporal')
-        print(f"Temporal Quantized Shape: {quantized_temporal.shape}")
-
-        # Depth quantization
-        quantized_depth, indices_depth = model(audio_tensor, stream_type='depth')
-        print(f"Depth Quantized Shape: {quantized_depth.shape}")
+        discrete_audio_tokens = model(audio_tensor)
+        print(f"discrete_audio_tokens: {discrete_audio_tokens.shape}")
+        print(discrete_audio_tokens)
 
 except KeyboardInterrupt:
     print("Audio processing stopped.")

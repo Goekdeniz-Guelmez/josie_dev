@@ -55,19 +55,39 @@ def precompute_freqs_cis(hidden_size: int, end: int, theta: float = 10000.0, use
 
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
-    nhidden_size = x.nhidden_size
-    assert 0 <= 1 < nhidden_size
-    assert freqs_cis.shape == (x.shape[1], x.shape[-1])
-    shape = [d if i == 1 or i == nhidden_size - 1 else 1 for i, d in enumerate(x.shape)]
+    """
+    Reshape frequency tensor for broadcasting with attention tensors.
+    """
+    ndim = x.ndim
+    assert 0 <= 1 < ndim
+    assert freqs_cis.shape == (x.shape[1], x.shape[-1] // 2)
+    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     return freqs_cis.view(*shape)
 
 
 def apply_rotary_emb(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary position embeddings to query and key tensors.
+    
+    Args:
+        xq: Query tensor of shape [batch, seq_len, num_heads, head_dim]
+        xk: Key tensor of shape [batch, seq_len, num_kv_heads, head_dim]
+        freqs_cis: Complex rotation tensor of shape [seq_len, head_dim//2]
+    
+    Returns:
+        Tuple of rotated query and key tensors
+    """
+    # Reshape tensors to complex view
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    
+    # Reshape frequencies for broadcasting
     freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+    
+    # Apply complex rotation
     xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
 

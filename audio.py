@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from args import AudioRQTransformerArgs as ModelArgs
 from utils import RMSNorm
+from transformer import TemporalDepthTransformer
 
 
 class AudioQuantizer(nn.Module):
@@ -77,7 +78,7 @@ class AudioQuantizer(nn.Module):
         
         return quantized, indices
     
-    def forward(self, x: torch.Tensor, stream_type: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, stream_type: str = 'temporal') -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Quantize input based on stream type
         stream_type: One of 'temporal', 'depth', or 'spectral'
@@ -96,3 +97,76 @@ class AudioQuantizer(nn.Module):
             raise ValueError(f"Unknown stream type: {stream_type}")
 
 
+class AudioEncoder(nn.Module):
+    """Quantizer with temporal, depth, and spectral codebooks"""
+    def __init__(self, args: ModelArgs):
+        super().__init__()
+        self.args = args
+
+        self.hidden_dim = args.encoder_hidden_dim
+
+        self.quantizer = AudioQuantizer(args)
+
+        self.temporial_transformer = TemporalDepthTransformer(args)
+        self.depth_transformer = TemporalDepthTransformer(args)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        temporal_quantized, _ = self.quantizer(x)
+        depth_quantized, _ = self.quantizer(x, 'depth')
+
+        temporialed, _ = self.temporial_transformer(temporal_quantized)
+        depthed, _ = self.depth_transformer(depth_quantized)
+
+        discrete_audio_tokens = temporialed + depthed
+        return discrete_audio_tokens
+
+
+
+class AudioDecoder(nn.Module):
+    """Quantizer with temporal, depth, and spectral codebooks"""
+    def __init__(self, args: ModelArgs):
+        super().__init__()
+        self.args = args
+
+        self.hidden_dim = args.encoder_hidden_dim
+
+        self.quantizer = AudioQuantizer(args)
+
+        self.temporial_transformer = TemporalDepthTransformer(args)
+        self.depth_transformer = TemporalDepthTransformer(args)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        temporal_quantized, _ = self.quantizer(x)
+        depth_quantized, _ = self.quantizer(x, 'depth')
+
+        temporialed, _ = self.temporial_transformer(temporal_quantized)
+        depthed, _ = self.depth_transformer(depth_quantized)
+
+        discrete_audio_tokens = temporialed + depthed
+        return discrete_audio_tokens
+
+
+class AudioEncoderDecoder(nn.Module):
+    """Quantizer with temporal, depth, and spectral codebooks"""
+    def __init__(self, args: ModelArgs):
+        super().__init__()
+        self.args = args
+
+        self.encoder = AudioEncoder(args)
+        self.decoder = AudioDecoder(args)
+    
+    def forward(self, x: torch.Tensor, style: str = 'encode') -> torch.Tensor:
+        if style == 'encode':
+            output = self.encoder(x)
+        elif style == 'decode':
+            output = self.decoder(x)
+        else:
+            return f'style wasnt found {style}'
+        
+        return output
+    
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.encoder(x)
+    
+    def decode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decoder(x)
