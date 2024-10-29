@@ -200,8 +200,6 @@ class ReasonerTransformer(nn.Module):
         h = self.norm(h)
         
         text_stream = self.text_output(h).float()
-        audio_logits = self.audio_output(h)
-        
-        audio_stream = torch.argmax(audio_logits, dim=-1)
+        audio_stream = self.audio_output(h)
         
         return text_stream, audio_stream

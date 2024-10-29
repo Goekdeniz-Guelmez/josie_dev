@@ -15,12 +15,6 @@ CHANNELS = 1
 audio = AudioEncoderDecoder(ModelArgs)
 model = ReasonerTransformer(ModelArgs)
 
-def reshape_audio_stream(audio_stream):
-    """Reshape audio stream to match decoder's expected input dimensions"""
-    # Assuming audio_stream is [batch_size, seq_len]
-    B, L = audio_stream.shape
-    # Reshape to [batch_size, seq_len, hidden_dim]
-    return audio_stream.unsqueeze(-1).expand(-1, -1, 256)
 
 def generate_audio_chunk():
     """Generate a single chunk of audio"""
@@ -30,11 +24,8 @@ def generate_audio_chunk():
     # Generate text and audio streams
     text_stream, audio_stream = model(inp)
     
-    # Reshape audio stream to match decoder's expected input shape
-    audio_stream_reshaped = reshape_audio_stream(audio_stream)
-    
     # Decode audio
-    output = audio.decode(audio_stream_reshaped)
+    output = audio.decode(audio_stream)
     
     # Convert to numpy array
     audio_output = output.squeeze().detach().numpy()
