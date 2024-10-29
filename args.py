@@ -18,19 +18,42 @@ class BaseModelArgs:
 
 @dataclass
 class ModelArgs(BaseModelArgs):
-    encoder_hidden_dim: int = 256
-    encoder_hidden_layers: int = 4
-    encoder_num_heads: int = 16
-    encoder_num_kv_heads: Optional[int] = 8
-    encoder_head_dim: int = encoder_hidden_dim // encoder_num_heads
-    encoder_codebook_size: int = 2048
-    encoder_num_quantizers: int = 8
-    encoder_rms_norm_eps: float = 1e-5
-    encoder_max_batch_size: int = 1
-    encoder_max_position_embeddings: int = 256
-    encoder_use_scaled_rope: bool = True
-    encoder_sample_rate: int = 16000
-    enable_denoising: bool = True
+    encoder_audio_hidden_dim: int = 256
+    encoder_audio_hidden_layers: int = 4
+    encoder_audio_num_heads: int = 16
+    encoder_audio_num_kv_heads: Optional[int] = 8
+    encoder_audio_head_dim: int = encoder_audio_hidden_dim // encoder_audio_num_heads
+    encoder_audio_codebook_size: int = 2048
+    encoder_audio_num_quantizers: int = 8
+    encoder_audio_rms_norm_eps: float = 1e-5
+    encoder_audio_max_batch_size: int = 1
+    encoder_audio_mlp_dropout: float = 0.1
+    encoder_audio_max_position_embeddings: int = 32
+    encoder_audio_sample_rate: int = 16000
+
+    decoder_audio_hidden_dim: int = 256
+    decoder_audio_hidden_layers: int = 4
+    decoder_audio_num_heads: int = 16
+    decoder_audio_num_kv_heads: Optional[int] = 8
+    decoder_audio_head_dim: int = decoder_audio_hidden_dim // decoder_audio_num_heads
+    decoder_audio_codebook_size: int = 2048
+    decoder_audio_num_quantizers: int = 8
+    decoder_audio_rms_norm_eps: float = 1e-5
+    decoder_audio_max_batch_size: int = 1
+    decoder_audio_max_position_embeddings: int = 32
+    decoder_audio_sample_rate: int = 16000
+
+    encoder_vision_hidden_dim: int = 512
+    encoder_vision_hidden_layers: int = 8
+    encoder_vision_num_heads: int = 16
+    encoder_vision_num_kv_heads: Optional[int] = 8
+    encoder_vision_head_dim: int = encoder_vision_hidden_dim // encoder_vision_num_heads
+    encoder_vision_codebook_size: int = 2048
+    encoder_vision_num_quantizers: int = 8
+    encoder_vision_rms_norm_eps: float = 1e-5
+    encoder_vision_max_batch_size: int = 1
+    encoder_vision_max_position_embeddings: int = 256
+    encoder_vision_rope_theta: float = 500000
 
     reasoner_hidden_dim: int = 512
     reasoner_hidden_layers: int = 4

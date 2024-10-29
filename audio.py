@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from args import ModelArgs
 from utils import RMSNorm
-from transformer import TemporalDepthTransformer
+from encoder_transformer import TemporalDepthTransformer
 
 
 class AudioQuantizer(nn.Module):
@@ -16,11 +16,11 @@ class AudioQuantizer(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
-        self.num_quantizers = args.encoder_num_quantizers
-        self.codebook_size = args.encoder_codebook_size
-        self.hidden_dim = args.encoder_hidden_dim
+        self.num_quantizers = args.encoder_audio_num_quantizers
+        self.codebook_size = args.encoder_audio_codebook_size
+        self.hidden_dim = args.encoder_audio_hidden_dim
 
-        self.input_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+        self.input_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_audio_rms_norm_eps)
 
         # Temporal codebooks - for sequence-level patterns
         self.temporal_codebooks = nn.ModuleList(
@@ -29,7 +29,7 @@ class AudioQuantizer(nn.Module):
                 for _ in range(self.num_quantizers)
             ]
         )
-        self.temporal_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+        self.temporal_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_audio_rms_norm_eps)
 
         # Depth codebooks - for feature-level patterns
         self.depth_codebooks = nn.ModuleList(
@@ -38,7 +38,7 @@ class AudioQuantizer(nn.Module):
                 for _ in range(self.num_quantizers)
             ]
         )
-        self.depth_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+        self.depth_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_audio_rms_norm_eps)
 
     def quantize_temporial(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         B, T, D = x.shape
@@ -126,7 +126,7 @@ class AudioDecoder(nn.Module):
         super().__init__()
         self.args = args
 
-        self.hidden_dim = args.encoder_hidden_dim
+        self.hidden_dim = args.encoder_audio_hidden_dim
 
         self.quantizer = AudioQuantizer(args)
 
@@ -150,7 +150,7 @@ class AudioEncoderDecoder(nn.Module):
         super().__init__()
         self.args = args
 
-        self.hidden_dim = args.encoder_hidden_dim
+        self.hidden_dim = args.encoder_audio_hidden_dim
 
         self.encoder = AudioEncoder(args)
         self.decoder = AudioDecoder(args)

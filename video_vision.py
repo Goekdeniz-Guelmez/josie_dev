@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from args import ModelArgs
 from utils import RMSNorm
-from transformer import TemporalDepthTransformer
+from encoder_transformer import TemporalDepthTransformer
 
 class VideoCNN(nn.Module):
     """CNN backbone for processing video frames"""

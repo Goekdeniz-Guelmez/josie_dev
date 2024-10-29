@@ -15,28 +15,28 @@ class TemporalDepthAttention(nn.Module):
         super().__init__()
         self.args = args
         
-        self.num_heads = args.encoder_num_heads
-        self.head_dim = args.encoder_head_dim
+        self.num_heads = args.encoder_audio_num_heads
+        self.head_dim = args.encoder_audio_head_dim
         
         self.wq = nn.Linear(
-            args.encoder_hidden_dim,
-            args.encoder_num_heads * args.encoder_head_dim,
+            args.encoder_audio_hidden_dim,
+            args.encoder_audio_num_heads * args.encoder_audio_head_dim,
             bias=False
         )
         self.wk = nn.Linear(
-            args.encoder_hidden_dim,
-            args.encoder_num_heads * args.encoder_head_dim,
+            args.encoder_audio_hidden_dim,
+            args.encoder_audio_num_heads * args.encoder_audio_head_dim,
             bias=False
         )
         self.wv = nn.Linear(
-            args.encoder_hidden_dim,
-            args.encoder_num_heads * args.encoder_head_dim,
+            args.encoder_audio_hidden_dim,
+            args.encoder_audio_num_heads * args.encoder_audio_head_dim,
             bias=False
         )
         
         self.wo = nn.Linear(
-            args.encoder_num_heads * args.encoder_head_dim,
-            args.encoder_hidden_dim,
+            args.encoder_audio_num_heads * args.encoder_audio_head_dim,
+            args.encoder_audio_hidden_dim,
             bias=False
         )
         
@@ -65,22 +65,32 @@ class TemporalDepthAttention(nn.Module):
         out = torch.matmul(attn, v)
         out = out.transpose(1, 2).contiguous().view(B, L, -1)
         return self.wo(out)
+    
+
+class MLP(nn.Module):
+    def __init__(self, args: ModelArgs):
+        super().__init__()
+        self.args = args
+
+        self.linear1 = nn.Linear(args.encoder_audio_hidden_dim, 4 * args.encoder_audio_hidden_dim, bias=False)
+        self.linear2 = nn.Linear(4 * args.encoder_audio_hidden_dim, args.encoder_audio_hidden_dim, bias=False)
+
+        self.dropout = nn.Dropout(args.encoder_audio_mlp_dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.linear2(F.silu(self.linear1(x))))
 
 
 class TemporalDepthTransformerBlock(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, layer_index):
         super().__init__()
+        self.layer_index = layer_index
         self.attention = TemporalDepthAttention(args)
         
-        self.feed_forward = nn.Sequential(
-            nn.Linear(args.encoder_hidden_dim, 4 * args.encoder_hidden_dim),
-            nn.SiLU(),
-            nn.Linear(4 * args.encoder_hidden_dim, args.encoder_hidden_dim),
-            nn.Dropout(0.1)
-        )
+        self.feed_forward = MLP(args)
         
-        self.ln1 = RMSNorm(args.encoder_hidden_dim, args.encoder_rms_norm_eps)
-        self.ln2 = RMSNorm(args.encoder_hidden_dim, args.encoder_rms_norm_eps)
+        self.ln1 = RMSNorm(args.encoder_audio_hidden_dim, args.encoder_audio_rms_norm_eps)
+        self.ln2 = RMSNorm(args.encoder_audio_hidden_dim, args.encoder_audio_rms_norm_eps)
         
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         x = x + self.attention(self.ln1(x), mask)
@@ -95,19 +105,19 @@ class TemporalDepthTransformer(nn.Module):
         
         # Positional embedding
         self.pos_embedding = nn.Parameter(
-            torch.zeros(1, args.encoder_max_position_embeddings, args.encoder_hidden_dim)
+            torch.zeros(1, args.encoder_audio_max_position_embeddings, args.encoder_audio_hidden_dim)
         )
         
         # Transformer layers
         self.layers = nn.ModuleList([
-            TemporalDepthTransformerBlock(args) for _ in range(args.encoder_hidden_layers)
+            TemporalDepthTransformerBlock(args, layer_index=idx) for idx in range(args.encoder_audio_hidden_layers)
         ])
         
-        self.ln_out = RMSNorm(args.encoder_hidden_dim, args.encoder_rms_norm_eps)
+        self.ln_out = RMSNorm(args.encoder_audio_hidden_dim, args.encoder_audio_rms_norm_eps)
 
         self.lm_head = nn.Linear(
-            args.encoder_hidden_dim,
-            args.encoder_codebook_size * args.encoder_num_quantizers,
+            args.encoder_audio_hidden_dim,
+            args.encoder_audio_codebook_size * args.encoder_audio_num_quantizers,
             bias=False
         )
 
@@ -133,18 +143,8 @@ class TemporalDepthTransformer(nn.Module):
 
         logits = self.lm_head(x)
 
-        logits = logits.view(B, L, self.args.encoder_num_quantizers, -1)
+        logits = logits.view(B, L, self.args.encoder_audio_num_quantizers, -1)
         
         tokens = torch.argmax(logits, dim=-1)
         
         return tokens, logits.view(B, L, -1)
-
-
-# model = TemporalDepthTransformer(ModelArgs)
-
-# tokens = torch.randn(1, 2, 256)
-# print(tokens.shape)
-
-# # Forward pass
-# output = model(tokens, True)
-# print(output.shape)

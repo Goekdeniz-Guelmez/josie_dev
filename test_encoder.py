@@ -13,7 +13,7 @@ CHUNK = 16000 // 4  # 250 ms for 16 kHz audio
 FORMAT = pyaudio.paInt16  # 16-bit audio format
 CHANNELS = 1
 RATE = 16000  # 16 kHz sample rate
-INPUT_DIM = ModelArgs.encoder_head_dim  # Model's input dimension
+INPUT_DIM = ModelArgs.encoder_audio_head_dim  # Model's input dimension
 
 # Initialize PyAudio
 p = pyaudio.PyAudio()
@@ -31,11 +31,11 @@ try:
         audio_tensor = torch.from_numpy(audio_np).view(1, -1)  # Flatten to [1, CHUNK]
 
         # Adjust dimensions to match [B, T, hidden_dim]
-        if audio_tensor.size(1) < model.hidden_dim:
+        if audio_tensor.size(1) < ModelArgs.encoder_audio_hidden_dim:
             # If too short, tile or pad to reach hidden_dim
-            audio_tensor = torch.cat([audio_tensor] * (model.hidden_dim // audio_tensor.size(1) + 1), dim=1)
-        audio_tensor = audio_tensor[:, :model.hidden_dim]  # Trim to exactly hidden_dim
-        audio_tensor = audio_tensor.view(1, 1, model.hidden_dim)  # Final shape [1, T, hidden_dim]
+            audio_tensor = torch.cat([audio_tensor] * (ModelArgs.encoder_audio_hidden_dim // audio_tensor.size(1) + 1), dim=1)
+        audio_tensor = audio_tensor[:, :ModelArgs.encoder_audio_hidden_dim]  # Trim to exactly hidden_dim
+        audio_tensor = audio_tensor.view(1, 1, ModelArgs.encoder_audio_hidden_dim)  # Final shape [1, T, hidden_dim]
 
         print(audio_tensor.shape)
         # Temporal quantization
