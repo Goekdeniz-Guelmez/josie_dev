@@ -4,6 +4,10 @@ import numpy as np
 from args import ModelArgs
 from josie import JOSIE
 
+from tokenizer import Tokenizer
+
+tokenizer = Tokenizer('/Users/gokdenizgulmez/Desktop/J.O.S.I.E./tokenizer.model')
+
 # Initialize AudioQuantizer with given arguments
 model = JOSIE(ModelArgs)
 
@@ -30,7 +34,7 @@ try:
         audio_output, next_token = model(audio_tensor)
 
         streamut.write(audio_output.astype(np.float32).tobytes())
-        print(f'{next_token.item()} ', end='', flush=True)
+        print(f'{tokenizer.decode([next_token.item()])}', end='', flush=True)
 
 except KeyboardInterrupt:
     print("Audio processing stopped.")

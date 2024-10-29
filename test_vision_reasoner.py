@@ -7,7 +7,7 @@ from torchvision import transforms
 from args import ModelArgs
 from tqdm import tqdm
 from reasoner import ReasonerTransformer
-from video_vision import VideoEncoder
+from vision import VideoEncoder
 
 def convert_to_discrete_tokens(tokens: torch.Tensor, codebook_size: int) -> torch.Tensor:
     """
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         video_path=video_path,
         video_vision=video_vision,
         reasoner=reasoner,
-        chunk_size=ModelArgs.encoder_max_position_embeddings
+        chunk_size=ModelArgs.encoder_vision_max_frames
     )
     
     print(f"\nFinal text stream shape: {text_stream.shape}")

@@ -1,6 +1,10 @@
-from typing import List, Any, Optional
+from typing import Optional
 from dataclasses import dataclass
 import inspect
+
+from tokenizer import Tokenizer
+
+tokenizer = Tokenizer('/Users/gokdenizgulmez/Desktop/J.O.S.I.E./tokenizer.model')
 
 
 @dataclass
@@ -31,7 +35,6 @@ class ModelArgs(BaseModelArgs):
     encoder_audio_attention_dropout: float = 0.1
     encoder_audio_max_position_embeddings: int = 32
     encoder_audio_sample_rate: int = 16000
-
     encoder_audio_rate: int = 16000
     encoder_audio_channels: int = 1
     encoder_audio_chunk: int = encoder_audio_rate // 4 # 250 ms for 16 kHz audio
@@ -59,8 +62,11 @@ class ModelArgs(BaseModelArgs):
     encoder_vision_num_quantizers: int = 8
     encoder_vision_rms_norm_eps: float = 1e-5
     encoder_vision_max_batch_size: int = 1
+    encoder_vision_mlp_dropout: float = 0.1
+    encoder_vision_attention_dropout: float = 0.1
     encoder_vision_max_position_embeddings: int = 256
     encoder_vision_rope_theta: float = 500000
+    encoder_vision_max_frames: int = 12
 
     reasoner_hidden_dim: int = 512
     reasoner_hidden_layers: int = 4
@@ -71,6 +77,6 @@ class ModelArgs(BaseModelArgs):
     reasoner_max_batch_size: int = 1
     reasoner_max_position_embeddings: int = 128
     reasoner_rope_theta: float = 500000
-    reasoner_vocab_size: int = 131000
+    reasoner_vocab_size: int = tokenizer.vocab_size
     reasoner_multiple_of: int = 256
     reasoner_ffn_dim_multiplier: Optional[float] = None

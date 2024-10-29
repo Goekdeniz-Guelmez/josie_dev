@@ -7,7 +7,60 @@ import torch.nn.functional as F
 
 from args import ModelArgs
 from utils import RMSNorm
-from encoder_transformer import TemporalDepthTransformer
+from encoder_vision_transformer import TemporalDepthEncoderTransformer
+
+IMAGE_FACTOR = 28
+MIN_PIXELS = 4 * 28 * 28
+MAX_PIXELS = 16384 * 28 * 28
+MAX_RATIO = 200
+
+VIDEO_MIN_PIXELS = 128 * 28 * 28
+VIDEO_MAX_PIXELS = 768 * 28 * 28
+VIDEO_TOTAL_PIXELS = 24576 * 28 * 28
+FRAME_FACTOR = 2
+FPS = 2.0
+FPS_MIN_FRAMES = 4
+FPS_MAX_FRAMES = 768
+
+
+class Vision(nn.Module):
+    """Optimized CNN with inference optimizations"""
+    def __init__(self, args: ModelArgs):
+        super().__init__()
+        self.args = args
+        
+        # Fused convolution + activation layers for better performance
+        self.conv_blocks = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
+                nn.BatchNorm2d(64),  # Replace RMSNorm with BatchNorm for faster inference
+                nn.SiLU(inplace=True)
+            ),
+            nn.Sequential(
+                nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.SiLU(inplace=True)
+            ),
+            nn.Sequential(
+                nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1, bias=False),
+                nn.BatchNorm2d(256),
+                nn.SiLU(inplace=True)
+            ),
+            nn.Sequential(
+                nn.Conv2d(256, args.encoder_vision_hidden_dim, kernel_size=3, stride=2, padding=1, bias=False),
+                nn.BatchNorm2d(args.encoder_vision_hidden_dim),
+                nn.SiLU(inplace=True)
+            )
+        ])
+        
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Process through conv blocks efficiently
+        for block in self.conv_blocks:
+            x = block(x)
+        return self.pool(x)
+
 
 class VideoCNN(nn.Module):
     """CNN backbone for processing video frames"""
@@ -16,22 +69,7 @@ class VideoCNN(nn.Module):
         self.args = args
         
         # Assuming input frames are 224x224x3
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-            
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            
-            nn.Conv2d(256, args.encoder_hidden_dim, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            
-            nn.AdaptiveAvgPool2d((1, 1))
-        )
+        self.vision = Vision(args)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Input shape: [batch, frames, channels, height, width]
@@ -39,7 +77,7 @@ class VideoCNN(nn.Module):
         
         # Reshape to process all frames through CNN
         x = x.view(B * T, C, H, W)
-        x = self.conv_layers(x)  # Shape: [B*T, hidden_dim, 1, 1]
+        x = self.vision(x)  # Shape: [B*T, hidden_dim, 1, 1]
         x = x.squeeze(-1).squeeze(-1)  # Shape: [B*T, hidden_dim]
         
         # Reshape back to sequence form
@@ -51,25 +89,23 @@ class VideoQuantizer(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
-        self.num_quantizers = args.encoder_num_quantizers
-        self.codebook_size = args.encoder_codebook_size
-        self.hidden_dim = args.encoder_hidden_dim
+        self.num_quantizers = args.encoder_vision_num_quantizers
 
-        self.input_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+        self.input_norm = RMSNorm(args.encoder_vision_hidden_dim, eps=args.encoder_vision_rms_norm_eps)
 
         # Temporal codebooks - for sequence-level patterns
         self.temporal_codebooks = nn.ModuleList([
-            nn.Embedding(self.codebook_size, (self.hidden_dim // self.num_quantizers))
+            nn.Embedding(args.encoder_vision_codebook_size, (args.encoder_vision_hidden_dim // self.num_quantizers))
             for _ in range(self.num_quantizers)
         ])
-        self.temporal_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+        self.temporal_output_norm = RMSNorm(args.encoder_vision_hidden_dim, eps=self.args.encoder_vision_rms_norm_eps)
 
         # Depth codebooks - for feature-level patterns
         self.depth_codebooks = nn.ModuleList([
-            nn.Embedding(self.codebook_size, (self.hidden_dim // self.num_quantizers))
+            nn.Embedding(args.encoder_vision_codebook_size, (args.encoder_vision_hidden_dim // self.num_quantizers))
             for _ in range(self.num_quantizers)
         ])
-        self.depth_output_norm = RMSNorm(self.hidden_dim, eps=self.args.encoder_rms_norm_eps)
+        self.depth_output_norm = RMSNorm(args.encoder_vision_hidden_dim, eps=self.args.encoder_vision_rms_norm_eps)
 
     def quantize_temporal(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         B, T, D = x.shape
@@ -126,8 +162,8 @@ class VideoEncoder(nn.Module):
         
         self.cnn = VideoCNN(args)
         self.quantizer = VideoQuantizer(args)
-        self.temporal_transformer = TemporalDepthTransformer(args)
-        self.depth_transformer = TemporalDepthTransformer(args)
+        self.temporal_transformer = TemporalDepthEncoderTransformer(args)
+        self.depth_transformer = TemporalDepthEncoderTransformer(args)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x shape: [batch, frames, channels, height, width]

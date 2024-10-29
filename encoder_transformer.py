@@ -144,4 +144,4 @@ class TemporalDepthEncoderTransformer(nn.Module):
         
         tokens = torch.argmax(logits, dim=-1)
         
-        return tokens, logits.view(B, L, -1)
+        return tokens, x
