@@ -116,7 +116,7 @@ class ReasonerFeedForward(nn.Module):
 
 
 class ReasonerTransformerBlock(nn.Module):
-    def __init__(self, layer_id: int, args: ModelArgs):
+    def __init__(self, args: ModelArgs, layer_index: int):
         super().__init__()
         self.n_heads = args.reasoner_num_heads
         self.dim = args.reasoner_hidden_dim
@@ -128,7 +128,7 @@ class ReasonerTransformerBlock(nn.Module):
             multiple_of=args.reasoner_multiple_of,
             ffn_dim_multiplier=args.reasoner_ffn_dim_multiplier,
         )
-        self.layer_id = layer_id
+        self.layer_index = layer_index
         self.attention_norm = RMSNorm(args.reasoner_hidden_dim, eps=args.reasoner_rms_norm_eps)
         self.ffn_norm = RMSNorm(args.reasoner_hidden_dim, eps=args.reasoner_rms_norm_eps)
 
@@ -155,9 +155,9 @@ class ReasonerTransformer(nn.Module):
             args.reasoner_vocab_size, args.reasoner_hidden_dim
         )
 
-        self.layers = torch.nn.ModuleList()
-        for layer_id in range(args.reasoner_hidden_layers):
-            self.layers.append(ReasonerTransformerBlock(layer_id, args))
+        self.layers = nn.ModuleList([
+            ReasonerTransformerBlock(args, layer_index=layer_idx) for layer_idx in range(args.reasoner_hidden_layers)
+        ])
 
         self.norm = RMSNorm(args.reasoner_hidden_dim, eps=args.reasoner_rms_norm_eps)
 
@@ -165,7 +165,7 @@ class ReasonerTransformer(nn.Module):
             args.reasoner_hidden_dim, args.reasoner_vocab_size, bias=False
         )
         self.audio_output = nn.Linear(
-            args.reasoner_hidden_dim, args.encoder_hidden_dim, bias=False  # For audio synthesis
+            args.reasoner_hidden_dim, args.decoder_audio_hidden_dim, bias=False
         )
 
         self.freqs_cis = precompute_freqs_cis(

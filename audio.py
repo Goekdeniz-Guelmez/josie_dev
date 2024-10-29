@@ -8,7 +8,8 @@ import torch.nn.functional as F
 
 from args import ModelArgs
 from utils import RMSNorm
-from encoder_transformer import TemporalDepthTransformer
+from encoder_transformer import TemporalDepthEncoderTransformer
+from decoder_transformer import TemporalDepthDecoderTransformer
 
 
 class AudioQuantizer(nn.Module):
@@ -105,8 +106,8 @@ class AudioEncoder(nn.Module):
 
         self.quantizer = AudioQuantizer(args)
 
-        self.temporial_transformer = TemporalDepthTransformer(args)
-        self.depth_transformer = TemporalDepthTransformer(args)
+        self.temporial_transformer = TemporalDepthEncoderTransformer(args)
+        self.depth_transformer = TemporalDepthEncoderTransformer(args)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         temporal_quantized, _ = self.quantizer(x)
@@ -130,8 +131,8 @@ class AudioDecoder(nn.Module):
 
         self.quantizer = AudioQuantizer(args)
 
-        self.temporial_transformer = TemporalDepthTransformer(args)
-        self.depth_transformer = TemporalDepthTransformer(args)
+        self.temporial_transformer = TemporalDepthDecoderTransformer(args)
+        self.depth_transformer = TemporalDepthDecoderTransformer(args)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         temporal_quantized, _ = self.quantizer(x)

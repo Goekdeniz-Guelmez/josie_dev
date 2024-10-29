@@ -28,6 +28,7 @@ class ModelArgs(BaseModelArgs):
     encoder_audio_rms_norm_eps: float = 1e-5
     encoder_audio_max_batch_size: int = 1
     encoder_audio_mlp_dropout: float = 0.1
+    encoder_audio_attention_dropout: float = 0.1
     encoder_audio_max_position_embeddings: int = 32
     encoder_audio_sample_rate: int = 16000
 
@@ -40,6 +41,8 @@ class ModelArgs(BaseModelArgs):
     decoder_audio_num_quantizers: int = 8
     decoder_audio_rms_norm_eps: float = 1e-5
     decoder_audio_max_batch_size: int = 1
+    decoder_audio_mlp_dropout: float = 0.1
+    decoder_audio_attention_dropout: float = 0.1
     decoder_audio_max_position_embeddings: int = 32
     decoder_audio_sample_rate: int = 16000
 
