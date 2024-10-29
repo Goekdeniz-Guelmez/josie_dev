@@ -32,6 +32,10 @@ class ModelArgs(BaseModelArgs):
     encoder_audio_max_position_embeddings: int = 32
     encoder_audio_sample_rate: int = 16000
 
+    encoder_audio_rate: int = 16000
+    encoder_audio_channels: int = 1
+    encoder_audio_chunk: int = encoder_audio_rate // 4 # 250 ms for 16 kHz audio
+
     decoder_audio_hidden_dim: int = 256
     decoder_audio_hidden_layers: int = 4
     decoder_audio_num_heads: int = 16
