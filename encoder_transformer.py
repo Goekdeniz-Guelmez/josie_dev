@@ -10,7 +10,7 @@ from args import ModelArgs
 from utils import RMSNorm
 
 
-class TemporalDepthAttention(nn.Module):
+class TemporalDepthEncoderAttention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
@@ -40,7 +40,7 @@ class TemporalDepthAttention(nn.Module):
             bias=False
         )
         
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(args.encoder_audio_attention_dropout)
 
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         B, L, D = x.shape
@@ -67,7 +67,7 @@ class TemporalDepthAttention(nn.Module):
         return self.wo(out)
     
 
-class MLP(nn.Module):
+class EncoderMLP(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
@@ -81,13 +81,13 @@ class MLP(nn.Module):
         return self.dropout(self.linear2(F.silu(self.linear1(x))))
 
 
-class TemporalDepthTransformerBlock(nn.Module):
+class TemporalDepthEncoderTransformerBlock(nn.Module):
     def __init__(self, args: ModelArgs, layer_index):
         super().__init__()
         self.layer_index = layer_index
-        self.attention = TemporalDepthAttention(args)
+        self.attention = TemporalDepthEncoderAttention(args)
         
-        self.feed_forward = MLP(args)
+        self.feed_forward = EncoderMLP(args)
         
         self.ln1 = RMSNorm(args.encoder_audio_hidden_dim, args.encoder_audio_rms_norm_eps)
         self.ln2 = RMSNorm(args.encoder_audio_hidden_dim, args.encoder_audio_rms_norm_eps)
@@ -110,7 +110,7 @@ class TemporalDepthEncoderTransformer(nn.Module):
         
         # Transformer layers
         self.layers = nn.ModuleList([
-            TemporalDepthTransformerBlock(args, layer_index=idx) for idx in range(args.encoder_audio_hidden_layers)
+            TemporalDepthEncoderTransformerBlock(args, layer_index=idx) for idx in range(args.encoder_audio_hidden_layers)
         ])
         
         self.ln_out = RMSNorm(args.encoder_audio_hidden_dim, args.encoder_audio_rms_norm_eps)

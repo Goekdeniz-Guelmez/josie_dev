@@ -10,7 +10,7 @@ from args import ModelArgs
 from utils import RMSNorm
 
 
-class TemporalDepthAttention(nn.Module):
+class TemporalDepthDecoderAttention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
@@ -67,7 +67,7 @@ class TemporalDepthAttention(nn.Module):
         return self.wo(out)
     
 
-class MLP(nn.Module):
+class DecoderMLP(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
@@ -81,13 +81,13 @@ class MLP(nn.Module):
         return self.dropout(self.linear2(F.silu(self.linear1(x))))
 
 
-class TemporalDepthTransformerBlock(nn.Module):
+class TemporalDepthDecoderTransformerBlock(nn.Module):
     def __init__(self, args: ModelArgs, layer_index):
         super().__init__()
         self.layer_index = layer_index
-        self.attention = TemporalDepthAttention(args)
+        self.attention = TemporalDepthDecoderAttention(args)
         
-        self.feed_forward = MLP(args)
+        self.feed_forward = DecoderMLP(args)
         
         self.ln1 = RMSNorm(args.decoder_audio_hidden_dim, args.decoder_audio_rms_norm_eps)
         self.ln2 = RMSNorm(args.decoder_audio_hidden_dim, args.decoder_audio_rms_norm_eps)
@@ -110,7 +110,7 @@ class TemporalDepthDecoderTransformer(nn.Module):
         
         # Transformer layers
         self.layers = nn.ModuleList([
-            TemporalDepthTransformerBlock(args, layer_index=layer_idx) for layer_idx in range(args.decoder_audio_hidden_layers)
+            TemporalDepthDecoderTransformerBlock(args, layer_index=layer_idx) for layer_idx in range(args.decoder_audio_hidden_layers)
         ])
         
         self.ln_out = RMSNorm(args.decoder_audio_hidden_dim, args.decoder_audio_rms_norm_eps)

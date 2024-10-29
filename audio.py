@@ -4,7 +4,6 @@ from einops import rearrange
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from args import ModelArgs
 from utils import RMSNorm
