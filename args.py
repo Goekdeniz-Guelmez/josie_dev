@@ -27,7 +27,7 @@ class ModelArgs(BaseModelArgs):
     encoder_num_quantizers: int = 8
     encoder_rms_norm_eps: float = 1e-5
     encoder_max_batch_size: int = 1
-    encoder_max_position_embeddings: int = 32
+    encoder_max_position_embeddings: int = 256
     encoder_use_scaled_rope: bool = True
     encoder_sample_rate: int = 16000
     enable_denoising: bool = True
