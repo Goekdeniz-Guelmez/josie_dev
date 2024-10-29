@@ -103,8 +103,6 @@ class AudioEncoder(nn.Module):
         super().__init__()
         self.args = args
 
-        self.hidden_dim = args.encoder_hidden_dim
-
         self.quantizer = AudioQuantizer(args)
 
         self.temporial_transformer = TemporalDepthTransformer(args)
@@ -151,6 +149,8 @@ class AudioEncoderDecoder(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
+
+        self.hidden_dim = args.encoder_hidden_dim
 
         self.encoder = AudioEncoder(args)
         self.decoder = AudioDecoder(args)

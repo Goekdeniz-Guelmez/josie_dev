@@ -37,8 +37,9 @@ try:
         audio_tensor = audio_tensor[:, :model.hidden_dim]  # Trim to exactly hidden_dim
         audio_tensor = audio_tensor.view(1, 1, model.hidden_dim)  # Final shape [1, T, hidden_dim]
 
+        print(audio_tensor.shape)
         # Temporal quantization
-        discrete_audio_tokens = model(audio_tensor)
+        discrete_audio_tokens = model.encode(audio_tensor)
         print(f"discrete_audio_tokens: {discrete_audio_tokens.shape}")
         print(discrete_audio_tokens)
 
