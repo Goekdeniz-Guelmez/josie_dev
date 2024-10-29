@@ -41,6 +41,9 @@ try:
         audio_output = output.squeeze().detach().numpy()
         streamut.write(audio_output.astype(np.float32).tobytes())
 
+        next_token = torch.argmax(text_stream[:, -1, :], dim=-1)
+        print(f'{next_token.item()} ', end='', flush=True)
+
 except KeyboardInterrupt:
     print("Audio processing stopped.")
 finally:
