@@ -1,11 +1,11 @@
 import pyaudio
 import torch
 import numpy as np
-from args import AudioRQTransformerArgs
+from args import ModelArgs
 from audio import AudioEncoderDecoder
 
 # Initialize AudioQuantizer with given arguments
-model = AudioEncoderDecoder(AudioRQTransformerArgs)
+model = AudioEncoderDecoder(ModelArgs)
 print(model)
 
 # Audio stream configuration
@@ -13,7 +13,7 @@ CHUNK = 16000 // 4  # 250 ms for 16 kHz audio
 FORMAT = pyaudio.paInt16  # 16-bit audio format
 CHANNELS = 1
 RATE = 16000  # 16 kHz sample rate
-INPUT_DIM = AudioRQTransformerArgs.encoder_head_dim  # Model's input dimension
+INPUT_DIM = ModelArgs.encoder_head_dim  # Model's input dimension
 
 # Initialize PyAudio
 p = pyaudio.PyAudio()

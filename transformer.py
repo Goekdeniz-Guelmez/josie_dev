@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from args import AudioRQTransformerArgs as ModelArgs
-from utils import RMSNorm, apply_rotary_emb, repeat_kv, precompute_freqs_cis
+from args import ModelArgs
+from utils import RMSNorm
 
 
 class TemporalDepthAttention(nn.Module):

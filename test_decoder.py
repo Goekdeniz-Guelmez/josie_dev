@@ -1,17 +1,17 @@
 import torch
 import pyaudio
 import numpy as np
-from args import AudioRQTransformerArgs
+from args import ModelArgs
 from audio import AudioEncoderDecoder
 
 # Initialize audio parameters
 RATE = 16000  # Sample rate
-CHUNK = 4000  # Buffer size
+CHUNK = 16000 // 4  # Buffer size
 FORMAT = pyaudio.paFloat32
 CHANNELS = 1
 
 # Initialize model
-model = AudioEncoderDecoder(AudioRQTransformerArgs)
+model = AudioEncoderDecoder(ModelArgs)
 
 # Initialize PyAudio
 p = pyaudio.PyAudio()
@@ -32,7 +32,7 @@ try:
         # Create random discrete tokens with shape [1, 1, 256]
         discrete_tokens = torch.randint(
             low=0,
-            high=AudioRQTransformerArgs.encoder_codebook_size,
+            high=ModelArgs.encoder_codebook_size,
             size=(1, 1, 256)
         )
         
@@ -41,6 +41,7 @@ try:
         
         # Convert to audio and play
         audio_output = output.squeeze().numpy()
+        print(audio_output.shape)
         
         # Play the synthesized audio
         stream.write(audio_output.astype(np.float32).tobytes())
