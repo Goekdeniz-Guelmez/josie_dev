@@ -22,14 +22,7 @@ class MultiStreamingJODIOEncoder(nn.Module):
         
         # Components
         self.quantizer = Quantizer(self.args)
-        self.multistream_transformer = MultiStreamTransformer(
-            num_tokens = 256,
-            dim = self.args.audio_encoder_args.hidden_size,
-            depth = 4,
-            causal = True,
-            max_seq_len = self.args.audio_encoder_args.max_position_embeddings,
-            num_streams = 4
-        )
+        self.multistream_transformer = MultiStreamTransformer(self.args, self.args.streaming_args.stream_types)
     
     def forward(self, audio_tensor: torch.Tensor) -> torch.Tensor:
         B, T, D = audio_tensor.shape
