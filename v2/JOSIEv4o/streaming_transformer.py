@@ -3,18 +3,11 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from dataclasses import dataclass
 from collections import deque
 
 from JOSIEv4o.args import ModelArgs
 from JOSIEv4o.utils import RMSNorm
-
-@dataclass
-class StreamingConfig:
-    chunk_size: int = 512  # Size of each streaming chunk
-    context_size: int = 2048  # Maximum context size to maintain
-    overlap_size: int = 128  # Overlap between chunks to maintain continuity
-
+from JOSIEv4o.args import StreamingArgs
 
 class StreamingAttention(nn.Module):
     def __init__(self, args):
@@ -135,7 +128,7 @@ class StreamingTransformerBlock(nn.Module):
 
 
 class StreamingTransformer(nn.Module):
-    def __init__(self, args: ModelArgs, streaming_config: StreamingConfig = None):
+    def __init__(self, args: ModelArgs, streaming_config: StreamingArgs = None):
         super().__init__()
         if hasattr(args, 'audio_encoder_args'):
             self.args = args.audio_encoder_args
@@ -144,7 +137,7 @@ class StreamingTransformer(nn.Module):
         else:
             self.args = args
 
-        self.streaming_config = streaming_config or StreamingConfig()
+        self.streaming_config = streaming_config or StreamingArgs
         
         self.in_embeddings = nn.Embedding(self.args.codebook_size, self.args.hidden_size)
         self.pos_embedding = self._create_rotary_embedding()

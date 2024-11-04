@@ -1,13 +1,9 @@
-from typing import Optional
-from collections import deque
-
 import torch
 import torch.nn as nn
 
 from JOSIEv4o.quantizer import Quantizer
 from JOSIEv4o.JODIOv1 import JODIODecoder
-from JOSIEv4o.transformer import Transformer
-from JOSIEv4o.multi_stream_transformer import MultistreamTransformer
+from JOSIEv4o.multistream_transformer import MultiStreamTransformer
 
 from JOSIEv4o.args import ModelArgs
 
@@ -26,7 +22,7 @@ class MultiStreamingJODIOEncoder(nn.Module):
         
         # Components
         self.quantizer = Quantizer(self.args)
-        self.multistream_transformer = MultistreamTransformer(
+        self.multistream_transformer = MultiStreamTransformer(
             num_tokens = 256,
             dim = self.args.audio_encoder_args.hidden_size,
             depth = 4,
@@ -48,7 +44,7 @@ class MultiStreamingJODIOEncoder(nn.Module):
 
         discrete_temporal_and_depth_tokens = discrete_temporal_tokens + discrete_depth_tokens
         
-        discrete_audio_tokens= self.multistream_transformer(discrete_temporal_and_depth_tokens)
+        discrete_audio_tokens, _ = self.multistream_transformer(discrete_temporal_and_depth_tokens)
         return discrete_audio_tokens
 
 
