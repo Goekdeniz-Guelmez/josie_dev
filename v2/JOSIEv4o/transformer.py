@@ -14,7 +14,7 @@ class Attention(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        
+
         self.hidden_size = self.args.hidden_size
         self.num_heads = self.args.num_heads
         self.head_dim = self.args.head_dim
@@ -25,13 +25,13 @@ class Attention(nn.Module):
         self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        
+
         self.out_proj = nn.Linear(
             self.num_heads * self.head_dim,
             self.hidden_size,
             bias=False
         )
-        
+
         self.dropout = nn.Dropout(self.attention_dropout)
 
     def forward(
@@ -53,7 +53,7 @@ class Attention(nn.Module):
             dropout_p=self.attention_dropout if self.training else 0.0,
             scale=self.scale
         )
-        
+
         out = attn.transpose(1, 2).contiguous().view(B, L, -1)
         return self.out_proj(out)
 
@@ -79,12 +79,12 @@ class TransformerBlock(nn.Module):
         self.args = args
 
         self.attention = Attention(args)
-        
+
         self.feed_forward = MultiLayerPerception(args)
-        
+
         self.attention_norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
         self.mlp_norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
-        
+
     def forward(
             self,
             x: torch.Tensor,
@@ -96,25 +96,21 @@ class TransformerBlock(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, args: ModelArgs, is_decoder: bool = False):
+    def __init__(self, args: ModelArgs):
         super().__init__()
         if hasattr(args, 'audio_encoder_args'):
             self.args = args.audio_encoder_args
-        elif hasattr(args, 'vision_encoder_args'):
-            self.args = args.vision_encoder_args
         else:
             self.args = args
 
-        self.is_decoder = is_decoder
-
         self.in_embeddings = nn.Embedding(self.args.codebook_size, self.args.hidden_size)
-        
+
         self.pos_embedding = self._create_rotary_embedding()
 
         self.layers = nn.ModuleList([
             TransformerBlock(self.args, layer_index=idx) for idx in range(self.args.hidden_layers)
         ])
-        
+
         self.norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
 
         self.lm_head = nn.Linear(
@@ -127,12 +123,12 @@ class Transformer(nn.Module):
         max_seq_len = self.args.max_position_embeddings
         hidden_size = self.args.hidden_size
         inv_freq = 1.0 / (10000 ** (torch.arange(0, hidden_size, 2).float() / hidden_size))
-        
+
         pos = torch.arange(max_seq_len, dtype=torch.float)
         sincos = torch.einsum('i,j->ij', pos, inv_freq)
         emb = torch.cat((sincos.sin(), sincos.cos()), dim=-1)
         return nn.Parameter(emb.unsqueeze(0), requires_grad=False)
-    
+
     @torch.jit.ignore
     def no_weight_decay(self):
         """Exclude position embeddings from weight decay."""
@@ -149,23 +145,22 @@ class Transformer(nn.Module):
         B, L = x.shape
 
         x = self.in_embeddings(x)
-        
+
         positions = self.pos_embedding[:, :L, :]
         x = x + positions
 
         mask = None
-        if self.is_decoder:
-            if L > 1:
-                mask = torch.triu(torch.full((L, L), float('-inf'), device=x.device), diagonal=1)
-                mask = mask.unsqueeze(0)
-        
+        if L > 1:
+            mask = torch.triu(torch.full((L, L), float('-inf'), device=x.device), diagonal=1)
+            mask = mask.unsqueeze(0)
+
         for layer in self.layers:
             x = layer(x, mask)
-            
+
         x = self.norm(x)
 
         logits = self.lm_head(x)
         logits = logits.view(B, L, self.args.num_quantizers, -1)
         tokens = torch.argmax(logits, dim=-1)
-        
+
         return tokens, x

@@ -11,12 +11,12 @@ class BaseModelArgs:
     @classmethod
     def from_dict(cls, params: dict):
         valid_params = {
-            k: v 
-            for k, v in params.items() 
+            k: v
+            for k, v in params.items()
             if k in inspect.signature(cls).parameters
         }
         return cls(**valid_params)
-    
+
 
 @dataclass
 class InferenceArgs(BaseModelArgs):
@@ -63,7 +63,7 @@ class AudioDecoderModelArgs(BaseModelArgs):
     num_kv_heads: Optional[int] = 8
     head_dim: int = field(init=False)
     codebook_size: int = 2048
-    num_quantizers: int = 8
+    num_quantizers: int = 8 # num_acoustic_quantizers
     rms_norm_eps: float = 1e-5
     mlp_dropout: float = 0.1
     attention_dropout: float = 0.1
@@ -103,22 +103,22 @@ class ModelArgs(BaseModelArgs):
     inference_args: Type[InferenceArgs] = InferenceArgs
     streaming_args: Type[StreamingArgs] = StreamingArgs
 
-    reasoner_architecture: str = 'LlamaForCausalLM'
-    reasoner_hidden_size: int = 896
-    reasoner_hidden_layers: int = 24
-    reasoner_num_heads: int = 14
-    reasoner_num_kv_heads: Optional[int] = 2
-    reasoner_head_dim: int = field(init=False)
-    reasoner_rms_norm_eps: float = 1e-06
-    reasoner_attention_dropout: float = 0.0
-    reasoner_max_position_embeddings: int = 1028
-    reasoner_rope_theta: float = 1000000.0
-    reasoner_vocab_size: int = 128256
-    reasoner_multiple_of: int = 256
-    reasoner_ffn_dim_multiplier: Optional[float] = None
+    architecture: str = 'LlamaForCausalLM'
+    hidden_size: int = 896
+    hidden_layers: int = 24
+    num_heads: int = 14
+    num_kv_heads: Optional[int] = 2
+    head_dim: int = field(init=False)
+    rms_norm_eps: float = 1e-06
+    attention_dropout: float = 0.0
+    max_position_embeddings: int = 1028
+    rope_theta: float = 1000000.0
+    vocab_size: int = 128256
+    multiple_of: int = 256
+    ffn_dim_multiplier: Optional[float] = None
 
     tokenizer_path: Path = field(default=Path('/Users/gokdenizgulmez/Desktop/J.O.S.I.E./tokenizer.model'))
     batch_size: int = 2
 
     def __post_init__(self):
-        self.reasoner_head_dim = self.reasoner_hidden_size // self.reasoner_num_heads
+        self.head_dim = self.hidden_size // self.num_heads
