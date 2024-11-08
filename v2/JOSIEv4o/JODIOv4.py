@@ -3,7 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from JOSIEv4o.args import ModelArgs
+
+from JOSIEv4o.seanets import SeaNetEncoder, SeaNetDecoder
 from JOSIEv4o.transformer import Transformer
+from JOSIEv4o.quantizer import VectorQuantizer, ResidualVectorQuantizer
 
 
 class JODIO(nn.Module):
@@ -14,12 +17,12 @@ class JODIO(nn.Module):
         self.decoder_args = args.audio_decoder_args
 
         # Encoder
-        self.seanet_encoder = SeaNet(self.args.hidden_size, is_decoder=False)
+        self.seanet_encoder = SeaNetEncoder(self.args.hidden_size)
         self.encoder_transformer = Transformer(self.encoder_args)
 
         self.pre_vq_proj = nn.Linear(self.args.hidden_size, self.encoder_args.hidden_size)
 
-        self.semantic_vq = VectoreQuantizer(
+        self.semantic_vq = VectorQuantizer(
             dim=self.encoder_args.hidden_size,
             codebook_size=self.encoder_args.codebook_size
         )
@@ -31,8 +34,8 @@ class JODIO(nn.Module):
         # Decoder
         self.post_vq_proj = nn.Linear(self.encoder_args.hidden_size, self.args.hidden_size)
 
-        self.decoder_transformer = Transformer(self.decoder_args, is_decoder=True)
-        self.decoder = SeaNet(self.args.hidden_size, is_decoder=True)
+        self.decoder_transformer = Transformer(self.decoder_args)
+        self.decoder = SeaNetDecoder(self.args.hidden_size)
 
     def encode(
         self,
