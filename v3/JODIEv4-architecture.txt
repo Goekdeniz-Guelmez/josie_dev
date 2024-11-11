@@ -1,0 +1,438 @@
+Based on the paper, I'll break down the architecture of Mimi, which is designed as a neural audio codec that combines both semantic and acoustic tokenization. Here are the key components:
+
+1. Base Architecture:
+- Uses a SeaNet autoencoder structure with both encoder and decoder
+- Input: Single-channel 24kHz waveform
+- Output: Latent representation at 12.5 frames per second with dimension D=512
+- All convolutions are causal to enable streaming
+
+2. Encoder:
+- Contains 4 convolutional blocks with:
+  - Dilated convolutions
+  - Strided convolutions
+  - ELU non-linearities
+  - Weight Normalization
+- Striding factors: (4, 5, 6, 8)
+- Final 1D convolution with stride 2
+
+- Includes a Transformer in the bottleneck (pre-quantization):
+  - 8 layers
+  - 8 heads
+  - RoPE position encodings
+  - 250 frame context (~20 seconds)
+  - Model dimension 512
+  - MLP dimension 2048
+  - GELU activations
+  - LayerScale initialization at 0.01
+
+3. Decoder:
+- Mirror structure of encoder but with transposed convolutions
+- Also includes a Transformer after quantization with same specs as encoder Transformer
+- Projects back to waveform domain
+
+4. Quantization:
+- Uses Split Residual Vector Quantization (RVQ)
+- Two parallel paths:
+  a. Semantic path: Single Vector Quantizer for semantic tokens
+  b. Acoustic path: RVQ with 7 levels for acoustic tokens
+- Total of 8 codebooks each with 2048 entries
+- Operates at 12.5Hz frame rate
+- Achieves 1.1kbps bitrate
+- Projects embeddings to 256 dimensions before RVQ and back to 512 after
+
+5. Training Features:
+- Uses AdamW optimizer
+- Weight decay of 5e-2 (only on Transformer parameters)
+- Learning rate of 8e-4
+- Batch size of 128 with 12s windows
+- Uses quantizer dropout
+- Applies quantization only 50% of the time during training
+- Trained with adversarial losses only (no reconstruction losses)
+
+6. Semantic Distillation:
+- Distills knowledge from WavLM into the first quantizer
+- Downsamples input to 16kHz for WavLM processing
+- Uses linear projection to 1024 dimensions
+- Applies non-causal average pooling (stride 4, kernel size 8)
+- Computes cosine distance for distillation loss
+
+The key innovation is the split RVQ design that separates semantic and acoustic tokens while maintaining high audio quality and streaming capability. This allows Mimi to encode both linguistic content and audio details in a format suitable for real-time generation.
+
+
+
+JODIO(
+  (encoder): SeaNetEncoder(
+    (input_proj): Conv1d(1, 896, kernel_size=(3,), stride=(1,), padding=(1,))
+    (conv_blocks): ModuleList(
+      (0): ConvBlock(
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+        (downsample): Conv1d(896, 896, kernel_size=(3,), stride=(4,), padding=(2,))
+      )
+      (1): ConvBlock(
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+        (downsample): Conv1d(896, 896, kernel_size=(3,), stride=(5,), padding=(2,))
+      )
+      (2): ConvBlock(
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+        (downsample): Conv1d(896, 896, kernel_size=(3,), stride=(6,), padding=(2,))
+      )
+      (3): ConvBlock(
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+        (downsample): Conv1d(896, 896, kernel_size=(3,), stride=(8,), padding=(2,))
+      )
+    )
+    (final_conv): Conv1d(896, 896, kernel_size=(3,), stride=(2,), padding=(2,))
+  )
+  (encoder_transformer): Transformer(
+    (layers): ModuleList(
+      (0-21): 22 x TransformerBlock(
+        (attention): Attention(
+          (q_proj): Linear(in_features=1028, out_features=1024, bias=False)
+          (k_proj): Linear(in_features=1028, out_features=1024, bias=False)
+          (v_proj): Linear(in_features=1028, out_features=1024, bias=False)
+          (out_proj): Linear(in_features=1024, out_features=1028, bias=False)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (feed_forward): MultiLayerPerception(
+          (linear1): Linear(in_features=1028, out_features=4112, bias=False)
+          (linear2): Linear(in_features=4112, out_features=1028, bias=False)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (attention_norm): RMSNorm()
+        (mlp_norm): RMSNorm()
+      )
+    )
+    (norm): RMSNorm()
+  )
+  (pre_vq_proj): Linear(in_features=896, out_features=1028, bias=True)
+  (semantic_rvq): ResidualVectorQuantizer(
+    (quantizers): ModuleList(
+      (0-1): 2 x VectorQuantizer(
+        (codebook): Embedding(2048, 1028)
+      )
+    )
+  )
+  (acoustic_rvq): ResidualVectorQuantizer(
+    (quantizers): ModuleList(
+      (0-7): 8 x VectorQuantizer(
+        (codebook): Embedding(2048, 1028)
+      )
+    )
+  )
+  (post_vq_proj): Linear(in_features=6, out_features=896, bias=True)
+  (decoder_transformer): Transformer(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerBlock(
+        (attention): Attention(
+          (q_proj): Linear(in_features=256, out_features=256, bias=False)
+          (k_proj): Linear(in_features=256, out_features=256, bias=False)
+          (v_proj): Linear(in_features=256, out_features=256, bias=False)
+          (out_proj): Linear(in_features=256, out_features=256, bias=False)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (feed_forward): MultiLayerPerception(
+          (linear1): Linear(in_features=256, out_features=1024, bias=False)
+          (linear2): Linear(in_features=1024, out_features=256, bias=False)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (attention_norm): RMSNorm()
+        (mlp_norm): RMSNorm()
+      )
+    )
+    (norm): RMSNorm()
+  )
+  (decoder): SeaNetDecoder(
+    (initial_upsample): ConvTranspose1d(896, 896, kernel_size=(3,), stride=(2,), padding=(2,), output_padding=(1,))
+    (conv_blocks): ModuleList(
+      (0): TransposedConvBlock(
+        (upsample): ConvTranspose1d(896, 896, kernel_size=(3,), stride=(8,), padding=(2,), output_padding=(7,))
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+      )
+      (1): TransposedConvBlock(
+        (upsample): ConvTranspose1d(896, 896, kernel_size=(3,), stride=(6,), padding=(2,), output_padding=(5,))
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+      )
+      (2): TransposedConvBlock(
+        (upsample): ConvTranspose1d(896, 896, kernel_size=(3,), stride=(5,), padding=(2,), output_padding=(4,))
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+      )
+      (3): TransposedConvBlock(
+        (upsample): ConvTranspose1d(896, 896, kernel_size=(3,), stride=(4,), padding=(2,), output_padding=(3,))
+        (layers): ModuleList(
+          (0): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(8,), dilation=(4,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (1): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(4,), dilation=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+          (2): Sequential(
+            (0): ParametrizedConv1d(
+              896, 896, kernel_size=(3,), stride=(1,), padding=(2,)
+              (parametrizations): ModuleDict(
+                (weight): ParametrizationList(
+                  (0): _WeightNorm()
+                )
+              )
+            )
+            (1): SiLU()
+          )
+        )
+      )
+    )
+    (final_proj): Conv1d(896, 1, kernel_size=(3,), stride=(1,), padding=(2,))
+  )
+)
