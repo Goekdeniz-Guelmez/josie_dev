@@ -60,15 +60,17 @@ class ResidualVectorQuantizer(nn.Module):
         """Encode vectors to tokens through multiple quantizers"""
         B, L, D = x.shape
         quantized = torch.zeros_like(x)
-        indices = [] # Will contain acoustic_tokens
+        indices_list = []
         residual = x
 
         for quantizer in self.quantizers:
             idx, quant = quantizer(residual)
-            indices.append(idx)
+            indices_list.append(idx)
             quantized = quantized + quant
             residual = residual - quant
 
+        # Stack the indices into a single tensor [B, num_quantizers, T]
+        indices = torch.stack(indices_list, dim=1)
         return indices, quantized
 
     def decode(self, tokens):
@@ -439,7 +441,6 @@ class JODIO(nn.Module):
         )
 
         # Decoder
-        self.post_vq_proj = nn.Linear(6, self.encoder_args.hidden_size)
         self.decoder_transformer = Transformer(self.decoder_args)
         self.decoder = SeaNetDecoder(self.encoder_args.hidden_size)
 
@@ -459,10 +460,13 @@ class JODIO(nn.Module):
         # Vector quantization
         semantic_tokens, _ = self.semantic_rvq(x)
         acoustic_tokens, _ = self.acoustic_rvq(x)
+        semantic_tokens = semantic_tokens.squeeze(0).flatten()
+        acoustic_tokens = acoustic_tokens.squeeze(0).flatten()
+        combined_tokens = torch.cat([semantic_tokens, acoustic_tokens], dim=0)
 
-        return semantic_tokens, acoustic_tokens
+        return semantic_tokens, acoustic_tokens, combined_tokens
 
-    def decode(self, semantic_and_acoustic_tokens):
+    def decode(self, x: torch.tensor):
         """
         Convert tokens back to waveform
         Args:
@@ -470,11 +474,8 @@ class JODIO(nn.Module):
         Returns:
             waveform: Reconstructed audio at 24kHz [B, 1, T]
         """
-        # Convert tokens to float before passing through linear layer
-        x = semantic_and_acoustic_tokens.float()
-        x = self.post_vq_proj(x)
         # Decode through transformer
-        x = self.decoder_transformer(x)
+        x = self.decoder_transformer(x.float())
         # Generate waveform
         return self.decoder(x)
     
@@ -485,12 +486,12 @@ num_samples = int(args.inference_args.rate * args.inference_args.record_seconds)
 
 
 model = JODIO(ModelArgs())
-# print(model)
+print(model)
 
 # Shape: [batch=1, channels=1, time]
 waveform = torch.randn(1, args.inference_args.channels, num_samples)
 
 while True:
-    semantic_tokens, acoustic_tokens = model.encode(waveform)
-    print(semantic_tokens)
-    print(acoustic_tokens)
+    semantic_tokens, acoustic_tokens, combined_tokens = model.encode(waveform)
+    print('------------------------------')
+    print(combined_tokens)
