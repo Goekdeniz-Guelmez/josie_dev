@@ -32,7 +32,6 @@ class StreamingArgs(BaseModelArgs):
     chunk_size: int = 512
     context_size: int = 2048
     overlap_size: int = 128
-    stream_types: tuple = ('temporal', 'depth')
 
 
 @dataclass
