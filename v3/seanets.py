@@ -5,22 +5,21 @@ class SeaNetEncoder(nn.Module):
     def __init__(self, dim: int):
         super().__init__()
         # Add initial projection to convert from 1 channel to dim channels
-        self.initial_proj = nn.Conv1d(
+        self.input_proj = nn.Conv1d(
             in_channels=1,
             out_channels=dim,
             kernel_size=3,
             padding=1
         )
-        self.initial_proj = nn.utils.weight_norm(self.initial_proj)
-        
+        self.input_proj = nn.utils.parametrizations.weight_norm(self.input_proj)
+
         self.conv_blocks = nn.ModuleList([
-            # Use dim instead of hardcoded 512 channels
             ConvBlock(stride=4, channels=dim),
             ConvBlock(stride=5, channels=dim),
             ConvBlock(stride=6, channels=dim),
             ConvBlock(stride=8, channels=dim)
         ])
-        
+
         self.final_conv = nn.Conv1d(
             in_channels=dim,
             out_channels=dim,
@@ -28,34 +27,35 @@ class SeaNetEncoder(nn.Module):
             stride=2,
             padding=2
         )
-        self.final_conv = nn.utils.weight_norm(self.final_conv)
+        self.final_conv = nn.utils.parametrizations.weight_norm(self.final_conv)
 
     def forward(self, x):
         # x shape: [B, 1, T] # Raw audio
-        x = self.initial_proj(x)  # [B, dim, T]
-        
+        x = self.input_proj(x)  # [B, dim, T]
+
         # Process through conv blocks
         for block in self.conv_blocks:
             x = block(x)
-            
+
         # Final downsampling
         x = self.final_conv(x)
-        
-        return x.transpose(1, 2)  # Return [B, T, dim] for transformer
+
+        return x.transpose(1, 2).contiguous()  # Return [B, T, D] for transformer
 
 
 class SeaNetDecoder(nn.Module):
     def __init__(self, dim: int):
         super().__init__()
+        # Modified initial upsample to handle small input sizes
         self.initial_upsample = nn.ConvTranspose1d(
             in_channels=dim,
             out_channels=dim,
-            kernel_size=3,
+            kernel_size=4,  # Increased kernel size
             stride=2,
-            padding=2,
-            output_padding=1
+            padding=1,      # Adjusted padding
+            output_padding=0
         )
-        self.initial_upsample = nn.utils.weight_norm(self.initial_upsample)
+        self.initial_upsample = nn.utils.parametrizations.weight_norm(self.initial_upsample)
 
         self.conv_blocks = nn.ModuleList([
             TransposedConvBlock(stride=8, channels=dim),
@@ -68,9 +68,9 @@ class SeaNetDecoder(nn.Module):
             in_channels=dim,
             out_channels=1,  # Single channel audio output
             kernel_size=3,
-            padding=2
+            padding=1       # Adjusted padding
         )
-        self.final_proj = nn.utils.weight_norm(self.final_proj)
+        self.final_proj = nn.utils.parametrizations.weight_norm(self.final_proj)
 
     def forward(self, x):
         # x shape: [B, T, dim]
@@ -84,9 +84,7 @@ class SeaNetDecoder(nn.Module):
             x = block(x)
             
         # Project to waveform
-        x = self.final_proj(x)
-        
-        return x  # [B, 1, T*480]
+        return self.final_proj(x)  # Return [B, 1, T]
 
 
 # Update ConvBlock and TransposedConvBlock to use dynamic channel size
@@ -104,37 +102,51 @@ class ConvBlock(nn.Module):
         current_dilation = 1
 
         for _ in range(num_conv_layers):
+            # Calculate padding to maintain same output size
+            total_padding = (kernel_size - 1) * current_dilation
+            left_padding = total_padding // 2
+            right_padding = total_padding - left_padding
+            
+            # Create padding layer
+            pad_layer = nn.ConstantPad1d((left_padding, right_padding), 0)
+            
             conv = nn.Conv1d(
                 in_channels=channels,
                 out_channels=channels,
                 kernel_size=kernel_size,
-                padding=(kernel_size - 1) * current_dilation,
-                dilation=current_dilation
+                dilation=current_dilation,
+                padding=0  # We'll use explicit padding
             )
             conv = nn.utils.parametrizations.weight_norm(conv)
-            
+
             layer = nn.Sequential(
+                pad_layer,
                 conv,
-                nn.ELU(),
+                nn.SiLU(),
             )
             self.layers.append(layer)
             current_dilation *= dilation_growth
 
-        self.downsample = nn.Conv1d(
-            in_channels=channels,
-            out_channels=channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=kernel_size-1
+        # Downsample with proper padding
+        downsample_padding = kernel_size // 2
+        self.downsample = nn.Sequential(
+            nn.ConstantPad1d((downsample_padding, downsample_padding), 0),
+            nn.Conv1d(
+                in_channels=channels,
+                out_channels=channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=0
+            )
         )
-        self.downsample = nn.utils.weight_norm(self.downsample)
+        self.downsample[1] = nn.utils.parametrizations.weight_norm(self.downsample[1])
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         for layer in self.layers:
             residual = x
             x = layer(x)
             x = x + residual
-        x = self.downsample(x)
+        x = self.downsample(x) # (B, D, L)
         return x
 
 
@@ -149,40 +161,63 @@ class TransposedConvBlock(nn.Module):
     ):
         super().__init__()
         
+        # Upsample layer
         self.upsample = nn.ConvTranspose1d(
             in_channels=channels,
             out_channels=channels,
             kernel_size=kernel_size,
             stride=stride,
-            padding=kernel_size-1,
+            padding=kernel_size//2,  # Changed padding
             output_padding=stride-1
         )
-        self.upsample = nn.utils.weight_norm(self.upsample)
+        self.upsample = nn.utils.parametrizations.weight_norm(self.upsample)
 
         self.layers = nn.ModuleList()
         current_dilation = dilation_growth**(num_conv_layers-1)
 
         for _ in range(num_conv_layers):
+            # Use sequential with padding layer to ensure sizes match
+            total_padding = (kernel_size - 1) * current_dilation
+            left_padding = total_padding // 2
+            right_padding = total_padding - left_padding
+            
+            pad_layer = nn.ConstantPad1d((left_padding, right_padding), 0)
+            
             conv = nn.Conv1d(
                 in_channels=channels,
                 out_channels=channels,
                 kernel_size=kernel_size,
-                padding=(kernel_size - 1) * current_dilation,
-                dilation=current_dilation
+                dilation=current_dilation,
+                padding=0  # We'll use explicit padding
             )
             conv = nn.utils.parametrizations.weight_norm(conv)
-            
+
             layer = nn.Sequential(
+                pad_layer,
                 conv,
-                nn.ELU()
+                nn.SiLU()
             )
+            
             self.layers.append(layer)
             current_dilation = current_dilation // dilation_growth
 
     def forward(self, x):
         x = self.upsample(x)
+        
+        # Store original upsampled tensor
+        orig_x = x
+        
+        # Apply convolution layers
         for layer in self.layers:
-            residual = x
             x = layer(x)
-            x = x + residual
+        
+        # Add residual connection with size check
+        if x.size(2) != orig_x.size(2):
+            # Pad or trim to match sizes
+            if x.size(2) > orig_x.size(2):
+                x = x[..., :orig_x.size(2)]
+            else:
+                orig_x = orig_x[..., :x.size(2)]
+        
+        x = x + orig_x
         return x

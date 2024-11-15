@@ -100,8 +100,6 @@ class Transformer(nn.Module):
         super().__init__()
         self.args = args
 
-        self.in_embeddings = nn.Embedding(self.args.codebook_size, self.args.hidden_size)
-
         self.pos_embedding = self._create_rotary_embedding()
 
         self.layers = nn.ModuleList([
@@ -109,12 +107,6 @@ class Transformer(nn.Module):
         ])
 
         self.norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
-
-        self.lm_head = nn.Linear(
-            self.args.hidden_size,
-            self.args.codebook_size * self.args.num_quantizers,
-            bias=False
-        )
 
     def _create_rotary_embedding(self) -> nn.Parameter:
         max_seq_len = self.args.max_position_embeddings
@@ -132,16 +124,7 @@ class Transformer(nn.Module):
         return {'pos_embedding'}
 
     def forward(self, x: torch.Tensor):
-        if len(x.shape) == 3:
-            x = x.squeeze(0)
-        elif len(x.shape) == 1:
-            x = x.unsqueeze(0)
-        else:
-            x = x
-
-        B, L = x.shape
-
-        x = self.in_embeddings(x)
+        B, L, D = x.shape # self.args.hidden_size
 
         positions = self.pos_embedding[:, :L, :]
         x = x + positions
@@ -155,9 +138,4 @@ class Transformer(nn.Module):
             x = layer(x, mask)
 
         x = self.norm(x)
-
-        logits = self.lm_head(x)
-        logits = logits.view(B, L, self.args.num_quantizers, -1)
-        tokens = torch.argmax(logits, dim=-1)
-
-        return tokens, x
+        return x

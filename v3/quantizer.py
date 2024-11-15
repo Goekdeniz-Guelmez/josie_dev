@@ -14,8 +14,8 @@ class VectorQuantizer(nn.Module):
     def forward(self, x):
         """Encode vectors to tokens"""
         distances = torch.cdist(x, self.codebook.weight)
-        indices = distances.argmin(dim=-1) # semantic_tokens
-        quantized = self.codebook(indices) # semantic_vectors
+        indices = distances.argmin(dim=-1) # tokens
+        quantized = self.codebook(indices) # vectors
         return indices, quantized
 
     def decode(self, tokens):
@@ -40,16 +40,19 @@ class ResidualVectorQuantizer(nn.Module):
 
     def forward(self, x):
         """Encode vectors to tokens through multiple quantizers"""
+        B, L, D = x.shape
         quantized = torch.zeros_like(x)
-        indices = [] # Will contain acoustic_tokens
+        indices_list = []
         residual = x
 
         for quantizer in self.quantizers:
             idx, quant = quantizer(residual)
-            indices.append(idx)
+            indices_list.append(idx)
             quantized = quantized + quant
             residual = residual - quant
 
+        # Stack the indices into a single tensor [B, num_quantizers, T]
+        indices = torch.stack(indices_list, dim=1)
         return indices, quantized
 
     def decode(self, tokens):

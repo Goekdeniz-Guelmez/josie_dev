@@ -48,8 +48,8 @@ class AudioEncoderModelArgs(BaseModelArgs):
     dilation_growth: int = 2
 
     codebook_size: int = 2048
-    num_acoustic_quantizers: int = 8
-    num_semantic_quantizers: int = 2
+    num_acoustic_quantizers: int = 12
+    num_semantic_quantizers: int = 6
     downsampling_ratio: int = 8
 
     rms_norm_eps: float = 1e-5
@@ -60,9 +60,9 @@ class AudioEncoderModelArgs(BaseModelArgs):
 
 @dataclass
 class AudioDecoderModelArgs(BaseModelArgs):
-    hidden_size: int = 1028
-    hidden_layers: int = 14
-    num_heads: int = 16
+    hidden_size: int = 512
+    hidden_layers: int = 12
+    num_heads: int = 12
     head_dim: int = hidden_size // num_heads
 
     channels: int = 512

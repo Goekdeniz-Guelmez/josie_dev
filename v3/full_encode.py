@@ -475,21 +475,19 @@ class JODIO(nn.Module):
             waveform: Reconstructed audio at 24kHz [B, 1, T]
         """
         # Decode through transformer
-        x = self.decoder_transformer(x.float())
+        x = self.decoder_transformer(x)
         # Generate waveform
         return self.decoder(x)
-    
+
 
 args = ModelArgs()
 
 num_samples = int(args.inference_args.rate * args.inference_args.record_seconds)
 
-
 model = JODIO(ModelArgs())
 print(model)
 
-# Shape: [batch=1, channels=1, time]
-waveform = torch.randn(1, args.inference_args.channels, num_samples)
+waveform = torch.randn(1, args.inference_args.channels, num_samples) # Shape: [batch=1, channels=1, time]
 
 while True:
     semantic_tokens, acoustic_tokens, combined_tokens = model.encode(waveform)

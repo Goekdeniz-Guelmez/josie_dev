@@ -5,43 +5,35 @@ from args import ModelArgs
 
 from seanets import SeaNetEncoder, SeaNetDecoder
 from transformer import Transformer
-from quantizer import VectorQuantizer, ResidualVectorQuantizer
+from quantizer import ResidualVectorQuantizer
+
 
 class JODIO(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
-        self.encoder_args = args.audio_encoder_args
-        self.decoder_args = args.audio_decoder_args
-
-        # Input projection to match encoder's expected channels
-        self.input_proj = nn.Conv1d(
-            in_channels=1,
-            out_channels=self.args.hidden_size,
-            kernel_size=3,
-            padding=1
-        )
+        self.encoder_args = args.audio_encoder_args()
+        self.decoder_args = args.audio_decoder_args()
 
         # Encoder
-        self.encoder = SeaNetEncoder(self.args.hidden_size)
+        self.encoder = SeaNetEncoder(self.encoder_args.hidden_size) # [B, T, dim]
         self.encoder_transformer = Transformer(self.encoder_args)
-        self.pre_vq_proj = nn.Linear(self.args.hidden_size, self.encoder_args.hidden_size)
 
         # Vector Quantizers
-        self.semantic_vq = VectorQuantizer(
+        self.semantic_rvq = ResidualVectorQuantizer(
             dim=self.encoder_args.hidden_size,
-            codebook_size=self.encoder_args.codebook_size
+            codebook_size=self.encoder_args.codebook_size,
+            num_quantizers=self.encoder_args.num_semantic_quantizers # 2 output Tokens
         )
         self.acoustic_rvq = ResidualVectorQuantizer(
             dim=self.encoder_args.hidden_size,
             codebook_size=self.encoder_args.codebook_size,
-            num_quantizers=self.encoder_args.num_quantizers
+            num_quantizers=self.encoder_args.num_acoustic_quantizers # 8 output Tokens
         )
 
         # Decoder
-        self.post_vq_proj = nn.Linear(6, self.args.hidden_size)
         self.decoder_transformer = Transformer(self.decoder_args)
-        self.decoder = SeaNetDecoder(self.args.hidden_size)
+        self.decoder = SeaNetDecoder(self.decoder_args.hidden_size)
 
     def encode(self, waveform: torch.Tensor):
         """
@@ -52,52 +44,28 @@ class JODIO(nn.Module):
             semantic_tokens: First VQ codebook indices [B, T]
             acoustic_tokens: List of 8 RVQ codebook indices [B, T]
         """
-        # Project input to match encoder's channel dimension
-        x = self.input_proj(waveform)  # [B, 1, T] -> [B, hidden_size, T]
-
         # Encode to latent space
-        x = self.encoder(x)  # [B, hidden_size, T]
-
-        # Transpose for transformer (expects [B, T, C])
-        x = x.transpose(1, 2)
-
+        x = self.encoder(waveform) # [B, D, L]
         x = self.encoder_transformer(x)
-        x = self.pre_vq_proj(x)
 
         # Vector quantization
-        semantic_tokens, _ = self.semantic_vq(x)
+        semantic_tokens, _ = self.semantic_rvq(x)
         acoustic_tokens, _ = self.acoustic_rvq(x)
+        semantic_tokens = semantic_tokens.squeeze(0).flatten()
+        acoustic_tokens = acoustic_tokens.squeeze(0).flatten()
+        combined_tokens = torch.cat([semantic_tokens, acoustic_tokens], dim=0)
 
-        return semantic_tokens, acoustic_tokens
+        return semantic_tokens, acoustic_tokens, combined_tokens
 
-    def decode(self, semantic_and_acoustic_tokens):
+    def decode(self, x: torch.tensor):
         """
         Convert tokens back to waveform
         Args:
-            semantic_and_acoustic_tokens: Indices from semantic and acoustic [B, T], where T has a dimension 6.
+            semantic_and_acoustic_tokens: Indices from semantic and acoustic [B, T], where T has a dimension 10 (8 Acoustic and 2 Semantic).
         Returns:
             waveform: Reconstructed audio at 24kHz [B, 1, T]
         """
-        x = self.post_vq_proj(semantic_and_acoustic_tokens)
-
         # Decode through transformer
         x = self.decoder_transformer(x)
-
-        # Transpose back to channel-first for decoder (expects [B, C, T])
-        x = x.transpose(1, 2)
-
         # Generate waveform
-        waveform = self.decoder(x)
-        return waveform
-
-    def forward(self, waveform):
-        """
-        Full forward pass: encode -> decode
-        """
-        semantic_tokens, acoustic_tokens = self.encode(waveform)
-        reconstructed = self.decode(semantic_tokens, acoustic_tokens)
-        return {
-            'semantic_tokens': semantic_tokens,
-            'acoustic_tokens': acoustic_tokens,
-            'reconstructed': reconstructed
-        }
+        return self.decoder(x).squeeze(0)
