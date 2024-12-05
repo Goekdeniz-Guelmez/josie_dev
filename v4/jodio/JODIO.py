@@ -1,15 +1,13 @@
 import torch
 import torch.nn as nn
 
-from ..args import ModelArgs
-
-from layers.seanet import SeaNetEncoder, SeaNetDecoder
-from layers.quantizer import ResidualVectorQuantizer, VectorQuantizer
-from layers.transformer import Transformer
+from .layers.seanet import SeaNetEncoder, SeaNetDecoder
+from .layers.quantizer import ResidualVectorQuantizer, VectorQuantizer
+from .layers.transformer import Transformer
 
 
 class JODIO(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args):
         super().__init__()
         self.args = args
         self.encoder_args = args.audio_encoder_args()
@@ -72,4 +70,4 @@ class JODIO(nn.Module):
     
     def forward(self, waveform: torch.Tensor) -> torch.tensor:
         _, _, combined_tokens = self.encode(waveform)
-        return self.decoder_transformer(combined_tokens)
+        return self.decoder_transformer(combined_tokens.unsqueeze(0).unsqueeze(0))
