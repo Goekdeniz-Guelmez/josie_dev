@@ -55,16 +55,19 @@ class JODIO(nn.Module):
 
         return semantic_tokens, acoustic_tokens, combined_tokens
 
-    def decode(self, x: torch.tensor):
+    def decode(self, semantic_tokens: torch.tensor, acoustic_tokens: torch.tensor):
         """
         Convert tokens back to waveform
         Args:
-            semantic_and_acoustic_tokens: Indices from semantic and acoustic [B, T], where T has a dimension 10 (8 Acoustic and 2 Semantic).
+            semantic_tokens:
+            acoustic_tokens:
         Returns:
             waveform: Reconstructed audio at 24kHz [B, 1, T]
         """
+        combined = torch.cat([semantic_tokens, acoustic_tokens], dim=-1)
+
         # Decode through transformer
-        x = self.decoder_transformer(x)
+        x = self.decoder_transformer(combined)
         # Generate waveform
         return self.decoder(x).squeeze(0)
     

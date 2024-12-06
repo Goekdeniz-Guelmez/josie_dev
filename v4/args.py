@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Type
 from pathlib import Path
 
+import pyaudio
 import inspect
 
 
@@ -15,6 +16,15 @@ class BaseModelArgs:
             if k in inspect.signature(cls).parameters
         }
         return cls(**valid_params)
+    
+
+@dataclass
+class InferenceArgs(BaseModelArgs):
+    format = pyaudio.paFloat32
+    channels = 1
+    rate = 16000  # 16kHz
+    record_seconds = 0.25  # 250ms
+    chunk = rate // 4 # 4096
 
 
 @dataclass
@@ -81,6 +91,7 @@ class TemporialTransformer(BaseModelArgs):
     hidden_layers: int = 12
     num_heads: int = 12
     head_dim: int = hidden_size // num_heads
+    attention_dropout: float = 0.0
 
     rms_norm_eps: float = 1e-5
     max_position_embeddings: int = 4096
@@ -92,6 +103,7 @@ class DepthTransformer(BaseModelArgs):
     hidden_layers: int = 6
     num_heads: int = 4
     head_dim: int = hidden_size // num_heads
+    attention_dropout: float = 0.0
 
     rms_norm_eps: float = 1e-5
     max_position_embeddings: int = 4096
@@ -103,8 +115,10 @@ class ModelArgs(BaseModelArgs):
     audio_decoder_args: Type[AudioDecoderModelArgs] = AudioDecoderModelArgs
     vision_encoder_args: Type[VisionEncoderModelArgs] = VisionEncoderModelArgs
 
-    temorial_transformer: Type[TemporialTransformer] = TemporialTransformer
-    depth_transformer: Type[DepthTransformer] = DepthTransformer
+    temporal_transformer_args: Type[TemporialTransformer] = TemporialTransformer
+    depth_transformer_args: Type[DepthTransformer] = DepthTransformer
+
+    inference_args: Type[InferenceArgs] = InferenceArgs
 
     stfu_token_id: int = 0
 
