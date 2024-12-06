@@ -66,7 +66,7 @@ class VisionEncoderModelArgs(BaseModelArgs):
     num_kv_heads: Optional[int] = 8
     head_dim: int = hidden_size // num_heads
     codebook_size: int = 2048
-    num_quantizers: int = 8
+    num_quantizers: int = 128
     rms_norm_eps: float = 1e-5
     mlp_dropout: float = 0.1
     attention_dropout: float = 0.1
