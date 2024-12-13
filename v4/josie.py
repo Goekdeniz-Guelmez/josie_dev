@@ -18,7 +18,7 @@ class JOSIE(nn.Module):
         self.depth_transformer = DepthTransformer(args)
     
     def forward(self, text_tokens: torch.Tensor, user_waveform: torch.Tensor):
-        semantic_token, acoustic_tokens, _ = self.jodio.encode(user_waveform)
+        semantic_token, acoustic_tokens = self.jodio.encode(user_waveform)
 
         temporal_context = self.temporial_transformer(
             text_tokens,

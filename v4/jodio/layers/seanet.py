@@ -38,9 +38,9 @@ class SeaNetEncoder(nn.Module):
             x = block(x)
 
         # Final downsampling
-        x = self.final_conv(x)
+        x = self.final_conv(x).unsqueeze(0).transpose(1, 2)
 
-        return x.transpose(1, 2).contiguous()  # Return [B, T, D] for transformer
+        return x.contiguous()  # Return [B, T, D] for transformer
 
 
 class SeaNetDecoder(nn.Module):

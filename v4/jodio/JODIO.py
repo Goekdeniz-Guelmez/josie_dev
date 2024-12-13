@@ -51,9 +51,8 @@ class JODIO(nn.Module):
         acoustic_tokens, _ = self.acoustic_rvq(x)
         semantic_tokens = semantic_tokens.squeeze(0).flatten()
         acoustic_tokens = acoustic_tokens.squeeze(0).flatten()
-        combined_tokens = torch.cat([semantic_tokens, acoustic_tokens], dim=0)
 
-        return semantic_tokens, acoustic_tokens, combined_tokens
+        return semantic_tokens, acoustic_tokens
 
     def decode(self, semantic_tokens: torch.tensor, acoustic_tokens: torch.tensor):
         """
@@ -70,7 +69,3 @@ class JODIO(nn.Module):
         x = self.decoder_transformer(combined)
         # Generate waveform
         return self.decoder(x).squeeze(0)
-    
-    def forward(self, waveform: torch.Tensor) -> torch.tensor:
-        _, _, combined_tokens = self.encode(waveform)
-        return self.decoder_transformer(combined_tokens.unsqueeze(0).unsqueeze(0))
