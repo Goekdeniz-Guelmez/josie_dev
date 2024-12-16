@@ -82,7 +82,7 @@ class VisionEncoderModelArgs(BaseModelArgs):
     num_kv_heads: Optional[int] = 8
     head_dim: int = hidden_size // num_heads
     codebook_size: int = 2048
-    num_quantizers: int = 128
+    num_quantizers: int = 32
     rms_norm_eps: float = 1e-5
     mlp_dropout: float = 0.1
     attention_dropout: float = 0.1
@@ -810,35 +810,36 @@ class SpatioTemporalPatchEmbedding(nn.Module):
 
 
 class JOVIO(nn.Module):
-    def __init__(self, args: VisionEncoderModelArgs):
+    def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
+        self.vision_args = args.vision_encoder_args()
         
         # Patch embedding
         self.patch_embed = SpatioTemporalPatchEmbedding(
             in_channels=3,  # RGB
             patch_size=16,
-            hidden_size=args.hidden_size,
+            hidden_size=self.vision_args.hidden_size,
             temporal_patch_size=2,
             use_conv=True
         )
         
         # Multimodal rotary embeddings
         self.mrope = MultimodalRotaryEmbedding(
-            dim=args.hidden_size,
-            max_spatial_pos=args.max_position_embeddings,
-            max_temporal_pos=args.max_frames,
-            theta=args.rope_theta
+            dim=self.vision_args.hidden_size,
+            max_spatial_pos=self.vision_args.max_position_embeddings,
+            max_temporal_pos=self.vision_args.max_frames,
+            theta=self.vision_args.rope_theta
         )
         
         # Transformer encoder
-        self.transformer = Transformer(args)
+        self.transformer = Transformer(self.vision_args)
         
         # Quantizer for converting embeddings to tokens
         self.quantizer = ResidualVectorQuantizer(
-            dim=args.hidden_size,
-            codebook_size=args.codebook_size,
-            num_quantizers=args.num_quantizers
+            dim=self.vision_args.hidden_size,
+            codebook_size=self.vision_args.codebook_size,
+            num_quantizers=self.vision_args.num_quantizers
         )
         
     def forward(self, x: torch.Tensor):
@@ -1080,9 +1081,14 @@ class TemporalTransformer(nn.Module):
             hidden_states.append(text_emb)
         
         # Process vision tokens if provided
-        if text_tokens is not None:
-            batch_size = text_tokens.size(0)
-            vision_emb = self.vision_embedding(vision_tokens)  # [B, L1, H]
+        if vision_tokens is not None:
+            batch_size = vision_tokens.size(0)
+            # Handle multiple quantizer levels
+            vision_embs = []
+            for i in range(vision_tokens.size(1)):  # Iterate over quantizer levels
+                emb = self.vision_embedding(vision_tokens[:, i])
+                vision_embs.append(emb)
+            vision_emb = torch.cat(vision_embs, dim=1)  # Combine all quantizer embeddings
             hidden_states.append(vision_emb)
 
         # Process semantic tokens if provided
@@ -1208,7 +1214,9 @@ class JOSIE(nn.Module):
         ):
         semantic_token, acoustic_tokens = self.jodio.encode(user_waveform)
 
-        if user_images:
+        # Handle vision encoding
+        vision_tokens = None
+        if user_images is not None:
             vision_tokens = self.jovio(user_images)
 
         temporal_context = self.temporial_transformer(
@@ -1219,7 +1227,6 @@ class JOSIE(nn.Module):
         )
 
         text_token, semantic_token, acoustic_tokens = self.depth_transformer(temporal_context)
-
         josies_waveform = self.jodio.decode(text_token, semantic_token, acoustic_tokens)
 
         return text_token, semantic_token, acoustic_tokens, josies_waveform
