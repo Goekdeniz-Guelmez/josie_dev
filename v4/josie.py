@@ -30,4 +30,4 @@ class JOSIE(nn.Module):
 
         josies_waveform = self.jodio.decode(semantic_token, acoustic_tokens)
 
-        return text_token, josies_waveform
+        return text_token, semantic_token, acoustic_tokens, josies_waveform

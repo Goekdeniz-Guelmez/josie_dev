@@ -29,7 +29,7 @@ class InferenceArgs(BaseModelArgs):
 
 @dataclass
 class AudioEncoderModelArgs(BaseModelArgs):
-    hidden_size: int = 1028
+    hidden_size: int = 512
     hidden_layers: int = 12
     num_heads: int = 16
     head_dim: int = hidden_size // num_heads

@@ -120,7 +120,10 @@ class Transformer(nn.Module):
     def forward(self, x: torch.Tensor):
         B, L, D = x.shape
 
+        print(x.shape)
+
         positions = self.pos_embedding[:, :L, :]
+        print(positions.shape)
         x = x + positions
 
         mask = None
