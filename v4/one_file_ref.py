@@ -692,6 +692,210 @@ class JODIO(nn.Module):
         return waveform
 
 
+
+# Vision Tokenizer
+class MultimodalRotaryEmbedding(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        max_spatial_pos: int = 256,  # Maximum spatial dimension
+        max_temporal_pos: int = 32,   # Maximum temporal dimension
+        theta: float = 10000.0,
+        learned: bool = False
+    ):
+        super().__init__()
+        self.dim = dim
+        self.max_spatial_pos = max_spatial_pos
+        self.max_temporal_pos = max_temporal_pos
+
+        # Create position embeddings for spatial dimensions
+        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2).float() / dim))
+        
+        # Spatial positions (height and width)
+        pos_h = torch.arange(max_spatial_pos, dtype=torch.float)
+        pos_w = torch.arange(max_spatial_pos, dtype=torch.float)
+        
+        # Temporal positions
+        pos_t = torch.arange(max_temporal_pos, dtype=torch.float)
+        
+        # Calculate embeddings
+        sincos_h = torch.einsum('i,j->ij', pos_h, inv_freq)
+        sincos_w = torch.einsum('i,j->ij', pos_w, inv_freq)
+        sincos_t = torch.einsum('i,j->ij', pos_t, inv_freq)
+        
+        # Combine sin and cos
+        emb_h = torch.cat((sincos_h.sin(), sincos_h.cos()), dim=-1)
+        emb_w = torch.cat((sincos_w.sin(), sincos_w.cos()), dim=-1)
+        emb_t = torch.cat((sincos_t.sin(), sincos_t.cos()), dim=-1)
+        
+        # Make learnable if specified
+        if learned:
+            self.emb_h = nn.Parameter(emb_h)
+            self.emb_w = nn.Parameter(emb_w)
+            self.emb_t = nn.Parameter(emb_t)
+        else:
+            self.register_buffer('emb_h', emb_h)
+            self.register_buffer('emb_w', emb_w)
+            self.register_buffer('emb_t', emb_t)
+
+    def forward(self, h: int, w: int, t: int = 1):
+        """
+        Apply rotary embeddings to positions
+        Args:
+            h: Height
+            w: Width 
+            t: Number of frames (temporal dimension)
+        Returns:
+            Tuple of embeddings for each dimension
+        """
+        emb_h = self.emb_h[:h]
+        emb_w = self.emb_w[:w]
+        emb_t = self.emb_t[:t] if t > 1 else None
+        
+        return emb_h, emb_w, emb_t
+
+
+class SpatioTemporalPatchEmbedding(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 3,
+        patch_size: int = 16,
+        hidden_size: int = 512,
+        temporal_patch_size: int = 2,
+        use_conv: bool = True
+    ):
+        super().__init__()
+        self.patch_size = patch_size
+        self.temporal_patch_size = temporal_patch_size
+        self.hidden_size = hidden_size
+        
+        if use_conv:
+            # Use convolution for patch embedding
+            self.proj = nn.Conv3d(
+                in_channels,
+                hidden_size,
+                kernel_size=(temporal_patch_size, patch_size, patch_size),
+                stride=(temporal_patch_size, patch_size, patch_size)
+            )
+        else:
+            # Use linear projection
+            self.proj = nn.Linear(
+                in_channels * patch_size * patch_size * temporal_patch_size,
+                hidden_size
+            )
+
+    def forward(self, x: torch.Tensor):
+        """
+        Args:
+            x: Video tensor of shape [B, C, T, H, W]
+        Returns:
+            Embedded patches of shape [B, L, hidden_size]
+            where L = (T/tp) * (H/p) * (W/p), tp = temporal_patch_size, p = patch_size
+        """
+        B, C, T, H, W = x.shape
+        
+        # Project patches
+        x = self.proj(x)
+        
+        # Reshape to sequence
+        if isinstance(self.proj, nn.Conv3d):
+            x = x.flatten(2).transpose(1, 2)
+        else:
+            x = x.reshape(B, T // self.temporal_patch_size,
+                         H // self.patch_size,
+                         W // self.patch_size, -1)
+            x = x.flatten(1, 3)  # [B, L, hidden_size]
+            
+        return x
+
+
+class JOVIO(nn.Module):
+    def __init__(self, args: VisionEncoderModelArgs):
+        super().__init__()
+        self.args = args
+        
+        # Patch embedding
+        self.patch_embed = SpatioTemporalPatchEmbedding(
+            in_channels=3,  # RGB
+            patch_size=16,
+            hidden_size=args.hidden_size,
+            temporal_patch_size=2,
+            use_conv=True
+        )
+        
+        # Multimodal rotary embeddings
+        self.mrope = MultimodalRotaryEmbedding(
+            dim=args.hidden_size,
+            max_spatial_pos=args.max_position_embeddings,
+            max_temporal_pos=args.max_frames,
+            theta=args.rope_theta
+        )
+        
+        # Transformer encoder
+        self.transformer = Transformer(args)
+        
+        # Quantizer for converting embeddings to tokens
+        self.quantizer = ResidualVectorQuantizer(
+            dim=args.hidden_size,
+            codebook_size=args.codebook_size,
+            num_quantizers=args.num_quantizers
+        )
+        
+    def forward(self, x: torch.Tensor):
+        """
+        Encode video/image to tokens
+        Args:
+            x: Video tensor [B, C, T, H, W] or image tensor [B, C, H, W]
+        Returns:
+            tokens: Quantized tokens from RVQ
+        """
+        # Add temporal dimension for images
+        if x.dim() == 4:
+            x = x.unsqueeze(2)  # [B, C, 1, H, W]
+            
+        B, C, T, H, W = x.shape
+        
+        # Embed patches
+        x = self.patch_embed(x)  # [B, L, D]
+        
+        # Get positional embeddings
+        h_emb, w_emb, t_emb = self.mrope(
+            H // self.patch_embed.patch_size,
+            W // self.patch_embed.patch_size,
+            T // self.patch_embed.temporal_patch_size
+        )
+        
+        # Apply positional embeddings
+        # Reshape to separate dimensions
+        L = x.shape[1]
+        x = x.view(B, T // self.patch_embed.temporal_patch_size,
+                  H // self.patch_embed.patch_size,
+                  W // self.patch_embed.patch_size, -1)
+        
+        # Apply embeddings to each dimension
+        x = x + h_emb.unsqueeze(1).unsqueeze(1).unsqueeze(0)
+        x = x + w_emb.unsqueeze(1).unsqueeze(0).unsqueeze(0)
+        if T > 1:
+            x = x + t_emb.unsqueeze(2).unsqueeze(2).unsqueeze(0)
+            
+        # Reshape back to sequence
+        x = x.view(B, L, -1)
+        
+        # Transform
+        x = self.transformer(x)
+        
+        # Quantize to tokens
+        tokens, _ = self.quantizer(x)
+        
+        return tokens
+
+    def encode(self, x: torch.Tensor):
+        """
+        Encode video/image to tokens (alias for forward)
+        """
+        return self.forward(x)
+
+
 # Main Transformer for JOSIE model
 class JOSIEAttention(nn.Module):
     def __init__(self, args: ModelArgs):
@@ -845,6 +1049,12 @@ class TemporalTransformer(nn.Module):
             self.temporal_args.hidden_size
         )
 
+        # Single embedding for vision tokens
+        self.vision_embedding = nn.Embedding(
+            args.vision_encoder_args.codebook_size,  # Usually 2048
+            self.temporal_args.hidden_size
+        )
+
         # Main transformer
         self.transformer = JOSIETransformer(self.temporal_args)
         
@@ -853,8 +1063,9 @@ class TemporalTransformer(nn.Module):
         self.final_norm = RMSNorm(self.temporal_args.hidden_size)
 
     def forward(
-            self, 
+            self,
             text_tokens: Optional[torch.Tensor] = None,  # [B, L]
+            vision_tokens: Optional[torch.Tensor] = None,  # [B, L, C, D]
             semantic_tokens: Optional[torch.Tensor] = None,  # [L] 
             acoustic_tokens: Optional[torch.Tensor] = None  # [L]
     ) -> torch.Tensor:
@@ -867,6 +1078,12 @@ class TemporalTransformer(nn.Module):
             batch_size = text_tokens.size(0)
             text_emb = self.text_embedding(text_tokens)  # [B, L1, H]
             hidden_states.append(text_emb)
+        
+        # Process vision tokens if provided
+        if text_tokens is not None:
+            batch_size = text_tokens.size(0)
+            vision_emb = self.vision_embedding(vision_tokens)  # [B, L1, H]
+            hidden_states.append(vision_emb)
 
         # Process semantic tokens if provided
         if semantic_tokens is not None:
@@ -978,17 +1195,27 @@ class JOSIE(nn.Module):
         super().__init__()
 
         self.jodio = JODIO(args)
+        self.jovio = JOVIO(args)
 
         self.temporial_transformer = TemporalTransformer(args)
         self.depth_transformer = DepthTransformer(args)
     
-    def forward(self, text_tokens: torch.Tensor, user_waveform: torch.Tensor):
+    def forward(
+            self,
+            user_waveform: torch.Tensor,
+            text_tokens: Optional[torch.tensor] = None,
+            user_images: Optional[torch.tensor] = None
+        ):
         semantic_token, acoustic_tokens = self.jodio.encode(user_waveform)
 
+        if user_images:
+            vision_tokens = self.jovio(user_images)
+
         temporal_context = self.temporial_transformer(
-            text_tokens,
-            semantic_token,
-            acoustic_tokens
+            text_tokens = text_tokens,
+            vision_tokens = vision_tokens,
+            semantic_tokens = semantic_token,
+            acoustic_tokens = acoustic_tokens
         )
 
         text_token, semantic_token, acoustic_tokens = self.depth_transformer(temporal_context)

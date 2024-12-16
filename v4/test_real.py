@@ -78,7 +78,10 @@ class JOSIETester:
                 # Process through model
                 with torch.no_grad():
                     # Generate audio from the tokens
-                    text_token, semantic_token, acoustic_tokens, output_waveform = self.model(torch.tensor([[1, 2, 3, 4]]), waveform)
+                    text_token, semantic_token, acoustic_tokens, output_waveform = self.model(
+                        text_token=torch.tensor([[1, 2, 3, 4]]),
+                        user_waveform=waveform
+                    )
                     
                     # Update context with new token
                     self.token_context = text_token
