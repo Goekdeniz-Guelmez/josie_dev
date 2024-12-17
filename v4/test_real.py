@@ -3,11 +3,10 @@ import pyaudio
 import numpy as np
 import threading
 import queue
-import time
 from pathlib import Path
 from typing import Optional
 
-from one_file_ref import JOSIE, ModelArgs, InferenceArgs
+from one_file_ref import JOSIE, ModelArgs
 
 class JOSIETester:
     def __init__(self, model_path: Optional[Path] = None):
@@ -79,7 +78,7 @@ class JOSIETester:
                 with torch.no_grad():
                     # Generate audio from the tokens
                     text_token, semantic_token, acoustic_tokens, output_waveform = self.model(
-                        text_token=torch.tensor([[1, 2, 3, 4]]),
+                        text_tokens=torch.tensor([[1, 2, 3, 4]]),
                         user_waveform=waveform
                     )
                     
