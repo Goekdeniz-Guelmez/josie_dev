@@ -1149,6 +1149,8 @@ class DepthTransformer(nn.Module):
         )
         
         self.transformer = JOSIETransformer(self.depth_args)
+
+        self.norm = RMSNorm(self.depth_args.rms_norm_eps)
         
         # Semantic token projection including text token context
         self.semantic_projection = nn.Linear(
@@ -1174,6 +1176,8 @@ class DepthTransformer(nn.Module):
         
         # Transform
         depth_hidden = self.transformer(hidden)  # [B, L, 512]
+
+        depth_hidden = self.norm(depth_hidden)
         
         # Get single text token
         text_logits = self.text_projection(depth_hidden[:, 0])  # [B, vocab_size]
