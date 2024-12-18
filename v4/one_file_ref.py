@@ -809,92 +809,103 @@ class SpatioTemporalPatchEmbedding(nn.Module):
         return x
 
 
-class JOVIO(nn.Module):
+class JOVIO(nn.Module): # HierarchicalVisionEncoder
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
         self.vision_args = args.vision_encoder_args()
         
-        # Patch embedding
-        self.patch_embed = SpatioTemporalPatchEmbedding(
-            in_channels=3,  # RGB
-            patch_size=16,
-            hidden_size=self.vision_args.hidden_size,
-            temporal_patch_size=2,
-            use_conv=True
+        # Multi-scale patch embeddings
+        self.patch_embeds = nn.ModuleList([
+            SpatioTemporalPatchEmbedding(
+                in_channels=3 if i == 0 else self.vision_args.hidden_size,
+                patch_size=2**(i+2),  # 4, 8, 16
+                hidden_size=self.vision_args.hidden_size,
+                temporal_patch_size=2,
+                use_conv=True
+            ) for i in range(3)
+        ])
+        
+        # Cross-frame attention
+        self.temporal_attention = nn.ModuleList([
+            Attention(args.vision_encoder_args()) 
+            for _ in range(3)
+        ])
+        
+        # Hierarchical transformers
+        self.transformers = nn.ModuleList([
+            Transformer(self.vision_args)
+            for _ in range(3)
+        ])
+        
+        # Motion feature extraction
+        self.motion_conv = nn.Conv3d(
+            3, self.vision_args.hidden_size, 
+            kernel_size=(3, 1, 1), 
+            padding=(1, 0, 0)
         )
         
-        # Multimodal rotary embeddings
-        self.mrope = MultimodalRotaryEmbedding(
-            dim=self.vision_args.hidden_size,
-            max_spatial_pos=self.vision_args.max_position_embeddings,
-            max_temporal_pos=self.vision_args.max_frames,
-            theta=self.vision_args.rope_theta
+        # Final fusion layer
+        self.fusion = nn.Linear(
+            self.vision_args.hidden_size * 4,  # 3 scales + motion
+            self.vision_args.hidden_size
         )
         
-        # Transformer encoder
-        self.transformer = Transformer(self.vision_args)
+        self.norm = RMSNorm(self.vision_args.hidden_size)
         
-        # Quantizer for converting embeddings to tokens
+        # Quantizer remains the same
         self.quantizer = ResidualVectorQuantizer(
             dim=self.vision_args.hidden_size,
             codebook_size=self.vision_args.codebook_size,
             num_quantizers=self.vision_args.num_quantizers
         )
         
+    def extract_motion_features(self, x):
+        # Compute frame differences
+        frame_diffs = x[:, :, 1:] - x[:, :, :-1]
+        # Pad to maintain temporal dimension
+        frame_diffs = F.pad(frame_diffs, (0, 0, 0, 0, 0, 1))
+        return self.motion_conv(frame_diffs)
+        
     def forward(self, x: torch.Tensor):
-        """
-        Encode video/image to tokens
-        Args:
-            x: Video tensor [B, C, T, H, W] or image tensor [B, C, H, W]
-        Returns:
-            tokens: Quantized tokens from RVQ
-        """
-        # Add temporal dimension for images
-        if x.dim() == 4:
-            x = x.unsqueeze(2)  # [B, C, 1, H, W]
-            
         B, C, T, H, W = x.shape
         
-        # Embed patches
-        x = self.patch_embed(x)  # [B, L, D]
-        
-        # Get positional embeddings
-        h_emb, w_emb, t_emb = self.mrope(
-            H // self.patch_embed.patch_size,
-            W // self.patch_embed.patch_size,
-            T // self.patch_embed.temporal_patch_size
-        )
-        
-        # Apply positional embeddings
-        # Reshape to separate dimensions
-        L = x.shape[1]
-        x = x.view(B, T // self.patch_embed.temporal_patch_size,
-                  H // self.patch_embed.patch_size,
-                  W // self.patch_embed.patch_size, -1)
-        
-        # Apply embeddings to each dimension
-        x = x + h_emb.unsqueeze(1).unsqueeze(1).unsqueeze(0)
-        x = x + w_emb.unsqueeze(1).unsqueeze(0).unsqueeze(0)
-        if T > 1:
-            x = x + t_emb.unsqueeze(2).unsqueeze(2).unsqueeze(0)
+        # Extract multi-scale features
+        hierarchical_features = []
+        for patch_embed, transformer, temporal_attn in zip(
+            self.patch_embeds, self.transformers, self.temporal_attention
+        ):
+            # Get patches at current scale
+            features = patch_embed(x)
             
-        # Reshape back to sequence
-        x = x.view(B, L, -1)
+            # Apply temporal attention
+            B, L, D = features.shape
+            features = features.view(B, T, L//T, D)
+            features = temporal_attn(features.view(B, T, -1))
+            features = features.view(B, T, L//T, D)
+            
+            # Transform features
+            features = transformer(features.view(B, L, D))
+            hierarchical_features.append(features)
+            
+        # Extract motion features
+        motion_features = self.extract_motion_features(x)
+        motion_features = motion_features.flatten(2).transpose(1, 2)
         
-        # Transform
-        x = self.transformer(x)
+        # Combine all features
+        combined_features = torch.cat([
+            *hierarchical_features,
+            motion_features
+        ], dim=-1)
+        
+        # Fuse different scales
+        fused = self.fusion(combined_features)
+        fused = self.norm(fused)
         
         # Quantize to tokens
-        tokens, _ = self.quantizer(x)
+        tokens, _ = self.quantizer(fused)
         
         return tokens
-
-    def encode(self, x: torch.Tensor):
-        """
-        Encode video/image to tokens (alias for forward)
-        """
-        return self.forward(x)
 
 
 # Main Transformer for JOSIE model
