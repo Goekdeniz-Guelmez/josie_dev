@@ -5,14 +5,14 @@ import torch
 import threading
 import time
 
-from one_file_ref import ModelArgs, JOSIE
+from one_file_ref_v5 import ModelArgs, JOSIE
 
 from PIL import Image
 import torchvision.transforms as transforms
 import os
 
 class RealTimeSpeechSystem:
-    def __init__(self, model_path=None, device='mps', sample_file=None, 
+    def __init__(self, model_path=None, device='cpu', sample_file=None, 
                  image_path='/Users/gokdenizgulmez/Desktop/josie_dev/v4/images/test.png',
                  default_text='Hello world this is a text input test'):
         # Load your JOSIE model if path is provided
@@ -169,7 +169,7 @@ class RealTimeSpeechSystem:
     
     def process_audio(self):
         buffer = []
-        buffer_size = 2
+        buffer_size = 2  # Process 1 second of audio at a time
         
         while self.is_running:
             # Get input chunk (either from file or synthetic)
@@ -180,9 +180,9 @@ class RealTimeSpeechSystem:
                 # Process audio
                 audio_data = np.concatenate(buffer)
                 
-                # Convert to tensor
+                # Convert to tensor with correct shape (channels, length)
                 waveform = torch.tensor(audio_data, dtype=torch.float32)
-                waveform = waveform.to(self.device).unsqueeze(0).unsqueeze(0)
+                waveform = waveform.to(self.device)
                 
                 # Always use the model for output, even if we're using dummy input
                 print("\nProcessing with JOSIE model...")
@@ -190,11 +190,10 @@ class RealTimeSpeechSystem:
                 with torch.no_grad():
                     # Call model with all available inputs
                     text_token, semantic_token, acoustic_tokens, response_waveform = self.model(
-                        user_waveform=waveform,
+                        audio_array=waveform,
                         text_tokens=self.text_tokens,
                         user_images=self.image
                     )
-                    
                     # Print generated text token for debugging
                     if text_token is not None:
                         print(f"Generated text token: {text_token.cpu().numpy()}")
