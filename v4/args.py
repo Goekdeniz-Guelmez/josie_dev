@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import Optional, Type
 from pathlib import Path
 
-import pyaudio
 import inspect
 
 
@@ -20,7 +19,6 @@ class BaseModelArgs:
 
 @dataclass
 class InferenceArgs(BaseModelArgs):
-    format = pyaudio.paFloat32
     channels = 1
     rate = 16000  # 16kHz
     record_seconds = 0.25  # 250ms

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Type
 from pathlib import Path
 
-import pyaudio
+import sounddevice as sd
 import inspect
 
 
@@ -26,7 +26,6 @@ class BaseModelArgs:
 
 @dataclass
 class InferenceArgs(BaseModelArgs):
-    format = pyaudio.paFloat32
     channels = 1
     rate = 16000  # 16kHz
     record_seconds = 0.25  # 250ms
@@ -133,18 +132,6 @@ class ModelArgs(BaseModelArgs):
     tokenizer_path: Path = field(default=Path('/Users/gokdenizgulmez/Desktop/J.O.S.I.E./tokenizer.model'))
 
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-    def forward(self, x):
-        output = self._norm(x.float()).type_as(x)
-        return output * self.weight
-    
-
 def turn_to_token(logits: torch.Tensor, temperature: float = 1.0) -> torch.Tensor:
     """
     Convert logits to tokens with temperature sampling
@@ -239,8 +226,8 @@ class TransformerBlock(nn.Module):
 
         self.feed_forward = MultiLayerPerception(args)
 
-        self.attention_norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
-        self.mlp_norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
+        self.attention_norm = nn.RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
+        self.mlp_norm = nn.RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
 
     def forward(
             self,
@@ -263,7 +250,7 @@ class Transformer(nn.Module):
             TransformerBlock(self.args, layer_index=idx) for idx in range(self.args.hidden_layers)
         ])
 
-        self.norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
+        self.norm = nn.RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
 
     def _create_rotary_embedding(self) -> nn.Parameter:
         max_seq_len = self.args.max_position_embeddings
@@ -851,7 +838,7 @@ class JOVIO(nn.Module): # HierarchicalVisionEncoder
             self.vision_args.hidden_size
         )
         
-        self.norm = RMSNorm(self.vision_args.hidden_size)
+        self.norm = nn.RMSNorm(self.vision_args.hidden_size)
         
         # Quantizer remains the same
         self.quantizer = ResidualVectorQuantizer(
@@ -977,8 +964,8 @@ class JOSIETransformerBlock(nn.Module):
 
         self.feed_forward = JOSIEMultiLayerPerception(args)
 
-        self.attention_norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
-        self.mlp_norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
+        self.attention_norm = nn.RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
+        self.mlp_norm = nn.RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
 
     def forward(
         self,
@@ -1001,7 +988,7 @@ class JOSIETransformer(nn.Module):
             JOSIETransformerBlock(self.args, layer_index=idx) for idx in range(self.args.hidden_layers)
         ])
 
-        self.norm = RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
+        self.norm = nn.RMSNorm(self.args.hidden_size, self.args.rms_norm_eps)
 
     def _create_rotary_embedding(self) -> nn.Parameter:
         max_seq_len = self.args.max_position_embeddings
@@ -1071,8 +1058,8 @@ class TemporalTransformer(nn.Module):
         self.transformer = JOSIETransformer(self.temporal_args)
         
         # Norms
-        self.norm = RMSNorm(self.temporal_args.hidden_size)
-        self.final_norm = RMSNorm(self.temporal_args.hidden_size)
+        self.norm = nn.RMSNorm(self.temporal_args.hidden_size)
+        self.final_norm = nn.RMSNorm(self.temporal_args.hidden_size)
 
     def forward(
             self,
@@ -1161,7 +1148,7 @@ class DepthTransformer(nn.Module):
         
         self.transformer = JOSIETransformer(self.depth_args)
 
-        self.norm = RMSNorm(self.depth_args.rms_norm_eps)
+        self.norm = nn.RMSNorm(self.depth_args.hidden_size, self.depth_args.rms_norm_eps)
         
         # Semantic token projection including text token context
         self.semantic_projection = nn.Linear(
