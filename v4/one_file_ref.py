@@ -756,20 +756,12 @@ class SpatioTemporalPatchEmbedding(nn.Module):
         self.temporal_patch_size = temporal_patch_size
         self.hidden_size = hidden_size
         
-        if use_conv:
-            # Use convolution for patch embedding
-            self.proj = nn.Conv3d(
-                in_channels,
-                hidden_size,
-                kernel_size=(temporal_patch_size, patch_size, patch_size),
-                stride=(temporal_patch_size, patch_size, patch_size)
-            )
-        else:
-            # Use linear projection
-            self.proj = nn.Linear(
-                in_channels * patch_size * patch_size * temporal_patch_size,
-                hidden_size
-            )
+        self.proj = nn.Conv3d(
+            in_channels,
+            hidden_size,
+            kernel_size=(temporal_patch_size, patch_size, patch_size),
+            stride=(temporal_patch_size, patch_size, patch_size)
+        )
 
     def forward(self, x: torch.Tensor):
         """
@@ -796,7 +788,7 @@ class SpatioTemporalPatchEmbedding(nn.Module):
         return x
 
 
-class JOVIO(nn.Module): # HierarchicalVisionEncoder
+class JOVIO(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args

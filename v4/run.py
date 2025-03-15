@@ -28,7 +28,7 @@ class RealTimeSpeechSystem:
         
         # Audio parameters
         self.sample_rate = 16000
-        self.chunk_size = 4000  # 250ms chunks
+        self.chunk_size = 4000
         
         # Processing state
         self.is_running = False
